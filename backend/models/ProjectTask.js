@@ -1,0 +1,48 @@
+const mongoose = require('mongoose');
+
+const projectTaskSchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      required: [true, 'Task title is required'],
+      trim: true,
+      maxlength: 160,
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 2000,
+    },
+    priority: {
+      type: String,
+      enum: ['Low', 'Medium', 'High'],
+      default: 'Medium',
+    },
+    status: {
+      type: String,
+      enum: ['Pending', 'In Progress', 'Completed'],
+      default: 'Pending',
+    },
+    deadline: {
+      type: Date,
+      default: null,
+    },
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
+      required: true,
+      index: true,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+  },
+  { timestamps: true }
+);
+
+projectTaskSchema.index({ projectId: 1, createdAt: -1 });
+
+module.exports = mongoose.model('ProjectTask', projectTaskSchema);
