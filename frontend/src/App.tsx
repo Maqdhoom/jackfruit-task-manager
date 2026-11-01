@@ -3,6 +3,8 @@ import { AuthProvider } from './auth/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
+import ProjectWorkspacePage from './pages/ProjectWorkspacePage'
+import ProjectsPage from './pages/ProjectsPage'
 import RegisterPage from './pages/RegisterPage'
 
 export default function App() {
@@ -15,6 +17,8 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
             </Route>
             <Route path="*" element={<main className="auth-card"><h1>Page not found</h1></main>} />
           </Routes>

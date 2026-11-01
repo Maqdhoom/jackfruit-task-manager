@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { getErrorMessage, useAuth } from '../auth/AuthContext'
 import {
   createTask,
@@ -176,9 +176,12 @@ export default function DashboardPage() {
           <h1>Your tasks</h1>
           <p className="muted dashboard-greeting">Welcome, {user.name}</p>
         </div>
-        <button className="button button-secondary" disabled={isLoggingOut} onClick={() => void handleLogout()}>
-          {isLoggingOut ? 'Logging out...' : 'Log out'}
-        </button>
+        <div className="dashboard-header-actions">
+          <Link className="button button-secondary" to="/projects">Projects</Link>
+          <button className="button button-secondary" disabled={isLoggingOut} onClick={() => void handleLogout()}>
+            {isLoggingOut ? 'Logging out...' : 'Log out'}
+          </button>
+        </div>
       </header>
 
       <section aria-label="Task summary" className="task-stats">
