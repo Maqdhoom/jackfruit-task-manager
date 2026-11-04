@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { getErrorMessage, useAuth } from '../auth/AuthContext'
+import TaskComments from '../components/TaskComments'
 import {
   acceptTaskTransferRequest,
   createTask,
@@ -49,6 +50,7 @@ export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [form, setForm] = useState<TaskInput>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [commentTaskId, setCommentTaskId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<'All' | TaskPriority>('All')
   const [statusFilter, setStatusFilter] = useState<'All' | TaskStatus>('All')
@@ -159,11 +161,13 @@ export default function DashboardPage() {
   }
 
   async function handleDelete(task: Task) {
+    if (!window.confirm(`Delete "${task.title}" and its comments? This cannot be undone.`)) return
     setError('')
     setNotice('')
 
     try {
       await deleteTask(task.id)
+      if (commentTaskId === task.id) setCommentTaskId(null)
       setTasks((current) => current.filter((item) => item.id !== task.id))
       setNotice('Task deleted successfully.')
       await loadDashboard()
@@ -180,7 +184,9 @@ export default function DashboardPage() {
     const project = transferEligibleProjects.find((item) => item.id === projectId)
     if (!projectId || !project) return
 
-    const accepted = window.confirm(`Move "${task.title}" to ${project.name}? It will no longer be a private task.`)
+    const accepted = window.confirm(
+      `Move "${task.title}" to ${project.name}? It will no longer be a private task. Your existing comments will remain private and visible only to you.`,
+    )
     if (!accepted) return
 
     setError('')
@@ -188,6 +194,7 @@ export default function DashboardPage() {
     setTransferActionId(task.id)
     try {
       await transferTaskToProject(task.id, projectId)
+      if (commentTaskId === task.id) setCommentTaskId(null)
       setNotice('Task moved to the project and assigned to you.')
       await loadDashboard()
     } catch (requestError) {
@@ -206,7 +213,7 @@ export default function DashboardPage() {
     }
 
     const accepted = window.confirm(
-      `Move "${task.title}" to ${request.project.name}? This removes it from your private tasks and assigns it to you in the project.`,
+      `Move "${task.title}" to ${request.project.name}? This removes it from your private tasks and assigns it to you in the project. Your existing comments will remain private and visible only to you.`,
     )
     if (!accepted) return
 
@@ -214,6 +221,7 @@ export default function DashboardPage() {
     setTransferActionId(request.id)
     try {
       await acceptTaskTransferRequest(request.id, task.id)
+      if (commentTaskId === task.id) setCommentTaskId(null)
       setNotice('Task transferred to the project.')
       await loadDashboard()
     } catch (requestError) {
@@ -537,6 +545,14 @@ export default function DashboardPage() {
                 <div className="task-actions">
                   <button className="text-button" onClick={() => startEditing(task)} type="button">Edit</button>
                   <button className="text-button delete-button" onClick={() => void handleDelete(task)} type="button">Delete</button>
+                  <button
+                    aria-expanded={commentTaskId === task.id}
+                    className="text-button"
+                    onClick={() => setCommentTaskId((current) => current === task.id ? null : task.id)}
+                    type="button"
+                  >
+                    {commentTaskId === task.id ? 'Hide comments' : 'Comments'}
+                  </button>
                   {transferEligibleProjects.length > 0 && (
                     <>
                       <select
@@ -563,6 +579,9 @@ export default function DashboardPage() {
                     </>
                   )}
                 </div>
+                {commentTaskId === task.id && (
+                  <TaskComments canComment taskId={task.id} />
+                )}
               </li>
             ))}
           </ul>

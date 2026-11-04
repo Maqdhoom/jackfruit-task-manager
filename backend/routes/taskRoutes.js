@@ -1,6 +1,11 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
 const {
+  createPersonalTaskComment,
+  listPersonalTaskComments,
+  listTransferredPrivateTaskNotes,
+} = require('../controllers/taskCommentController');
+const {
   createTask,
   deleteTask,
   acceptTaskTransferRequest,
@@ -21,6 +26,8 @@ router.get('/dashboard/summary', getDashboardSummary);
 router.get('/transfer-requests', getTaskTransferRequests);
 router.post('/transfer-requests/:requestId/accept', acceptTaskTransferRequest);
 router.post('/transfer-requests/:requestId/decline', declineTaskTransferRequest);
+router.get('/:id/private-notes', listTransferredPrivateTaskNotes);
+router.route('/:id/comments').get(listPersonalTaskComments).post(createPersonalTaskComment);
 router.post('/:id/transfer', transferOwnTaskToProject);
 router.route('/:id').get(getTask).put(updateTask).delete(deleteTask);
 
