@@ -1,6 +1,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { calculateDashboardSummary } = require('../controllers/taskController');
+const TaskTransferRequest = require('../models/TaskTransferRequest');
+const {
+  canAcceptTaskTransferRequest,
+  calculateDashboardSummary,
+  isTaskEligibleProjectRole,
+} = require('../controllers/taskController');
 
 const now = new Date('2026-10-30T12:00:00.000Z');
 
@@ -83,4 +88,35 @@ test('includes deadlines through seven days and returns no more than five', () =
   assert.equal(upcomingTasks.length, 5);
   assert.equal(upcomingTasks[0].title, 'Soon 0');
   assert.ok(upcomingTasks.every((task) => task.title !== 'In eight days'));
+});
+
+test('only project owners, admins, and members can transfer personal tasks into a project', () => {
+  assert.equal(isTaskEligibleProjectRole('owner'), true);
+  assert.equal(isTaskEligibleProjectRole('admin'), true);
+  assert.equal(isTaskEligibleProjectRole('member'), true);
+  assert.equal(isTaskEligibleProjectRole('viewer'), false);
+  assert.equal(isTaskEligibleProjectRole(null), false);
+});
+
+test('only the requested project member can approve an unexpired task transfer request', () => {
+  const request = {
+    taskOwnerId: '507f1f77bcf86cd799439011',
+    projectId: '507f1f77bcf86cd799439014',
+    status: 'pending',
+    expiresAt: new Date('2026-11-10T00:00:00.000Z'),
+  };
+  const now = new Date('2026-11-04T00:00:00.000Z');
+
+  assert.equal(canAcceptTaskTransferRequest(request, request.taskOwnerId, request.projectId, now), true);
+  assert.equal(canAcceptTaskTransferRequest(request, '507f1f77bcf86cd799439012', request.projectId, now), false);
+  assert.equal(canAcceptTaskTransferRequest(request, request.taskOwnerId, '507f1f77bcf86cd799439015', now), false);
+  assert.equal(canAcceptTaskTransferRequest({ ...request, status: 'cancelled' }, request.taskOwnerId, request.projectId, now), false);
+  assert.equal(canAcceptTaskTransferRequest({ ...request, expiresAt: now }, request.taskOwnerId, request.projectId, now), false);
+});
+
+test('task transfer requests do not store or expose private task contents', () => {
+  assert.equal(TaskTransferRequest.schema.path('title'), undefined);
+  assert.equal(TaskTransferRequest.schema.path('description'), undefined);
+  assert.ok(TaskTransferRequest.schema.path('taskOwnerId'));
+  assert.ok(TaskTransferRequest.schema.path('projectId'));
 });

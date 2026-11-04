@@ -949,6 +949,43 @@ h2 {
   box-shadow: 0 0 0 3px rgba(120, 89, 209, 0.12);
 }
 
+.assignee-field select {
+  min-height: 100px;
+}
+
+.assignee-field > span {
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+.project-task-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 22px 0 14px;
+}
+
+.project-task-filter p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.task-assignees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.task-assignee-pill {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f0edfa;
+  color: #5a3aa7;
+  font-size: 0.68rem;
+}
+
 .project-form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1453,6 +1490,72 @@ h2 {
   flex: 0 0 auto;
 }
 
+.transfer-requests-panel {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid #e5ebf5;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.transfer-requests-panel > .section-heading {
+  margin: 0;
+}
+
+.transfer-requests-panel > .muted {
+  margin: 12px 0;
+  font-size: 0.82rem;
+}
+
+.transfer-request-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.transfer-request-item {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid #eceef2;
+}
+
+.transfer-request-item p {
+  margin: 5px 0 0;
+  color: #7a8290;
+  font-size: 0.78rem;
+}
+
+.transfer-request-item label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.transfer-request-item select,
+.task-actions select {
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 1px solid #dfe3eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.transfer-request-item .task-actions {
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.transfer-request-item .button {
+  min-height: 38px;
+  white-space: nowrap;
+}
+
 .member-list {
   display: grid;
   gap: 2px;
@@ -1651,6 +1754,15 @@ h2 {
   .project-task-form,
   .member-add-form {
     grid-template-columns: 1fr;
+  }
+
+  .transfer-request-item {
+    grid-template-columns: 1fr;
+  }
+
+  .project-task-filter {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .workspace-progress {

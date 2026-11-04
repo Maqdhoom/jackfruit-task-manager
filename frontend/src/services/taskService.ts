@@ -14,6 +14,14 @@ export type Task = {
   updatedAt: string
 }
 
+export type TaskTransferRequest = {
+  id: string
+  project: { id: string; name: string }
+  requestedBy: { id: string; name: string; email: string }
+  expiresAt: string
+  createdAt: string
+}
+
 export type TaskInput = Pick<Task, 'title' | 'description' | 'priority' | 'status' | 'deadline'>
 
 export type DashboardSummary = {
@@ -39,6 +47,23 @@ export async function getTasks(): Promise<Task[]> {
 export async function getDashboardSummary(): Promise<DashboardData> {
   const response = await API.get<DashboardData>('/tasks/dashboard/summary')
   return response.data
+}
+
+export async function getTaskTransferRequests(): Promise<TaskTransferRequest[]> {
+  const response = await API.get<{ requests: TaskTransferRequest[] }>('/tasks/transfer-requests')
+  return response.data.requests
+}
+
+export async function transferTaskToProject(taskId: string, projectId: string): Promise<void> {
+  await API.post(`/tasks/${taskId}/transfer`, { projectId })
+}
+
+export async function acceptTaskTransferRequest(requestId: string, taskId: string): Promise<void> {
+  await API.post(`/tasks/transfer-requests/${requestId}/accept`, { taskId })
+}
+
+export async function declineTaskTransferRequest(requestId: string): Promise<void> {
+  await API.post(`/tasks/transfer-requests/${requestId}/decline`)
 }
 
 export async function createTask(input: TaskInput): Promise<Task> {

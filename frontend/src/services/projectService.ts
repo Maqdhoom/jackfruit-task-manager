@@ -37,6 +37,14 @@ export type ProjectTask = {
   createdAt: string
   updatedAt: string
   createdBy: string
+  assignees: Array<{ id: string; name: string; email: string }>
+}
+
+export type ProjectTaskTransferRequest = {
+  id: string
+  member: { id: string; name: string; email: string }
+  expiresAt: string
+  createdAt: string
 }
 
 export type ProjectInvitation = {
@@ -59,7 +67,9 @@ export type InvitationDetails = {
 }
 
 export type ProjectInput = Pick<Project, 'name' | 'description'>
-export type ProjectTaskInput = Pick<ProjectTask, 'title' | 'description' | 'priority' | 'status' | 'deadline'>
+export type ProjectTaskInput = Pick<ProjectTask, 'title' | 'description' | 'priority' | 'status' | 'deadline'> & {
+  assigneeIds?: string[]
+}
 
 export async function listProjects(): Promise<Project[]> {
   const response = await API.get<{ projects: Project[] }>('/projects')
@@ -142,9 +152,34 @@ export async function acceptProjectInvitation(token: string): Promise<{ projectI
   return response.data
 }
 
-export async function getProjectTasks(projectId: string): Promise<ProjectTask[]> {
-  const response = await API.get<{ tasks: ProjectTask[] }>(`/projects/${projectId}/tasks`)
+export async function getProjectTasks(projectId: string, assignedToMe = false): Promise<ProjectTask[]> {
+  const response = await API.get<{ tasks: ProjectTask[] }>(`/projects/${projectId}/tasks`, {
+    params: assignedToMe ? { assignedToMe: true } : undefined,
+  })
   return response.data.tasks
+}
+
+export async function createProjectTaskTransferRequest(
+  projectId: string,
+  userId: string,
+): Promise<void> {
+  await API.post(`/projects/${projectId}/task-transfer-requests`, { userId })
+}
+
+export async function listProjectTaskTransferRequests(
+  projectId: string,
+): Promise<ProjectTaskTransferRequest[]> {
+  const response = await API.get<{ requests: ProjectTaskTransferRequest[] }>(
+    `/projects/${projectId}/task-transfer-requests`,
+  )
+  return response.data.requests
+}
+
+export async function cancelProjectTaskTransferRequest(
+  projectId: string,
+  requestId: string,
+): Promise<void> {
+  await API.delete(`/projects/${projectId}/task-transfer-requests/${requestId}`)
 }
 
 export async function createProjectTask(projectId: string, input: ProjectTaskInput): Promise<ProjectTask> {

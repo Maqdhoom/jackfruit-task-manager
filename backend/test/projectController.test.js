@@ -1,14 +1,17 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const Project = require('../models/Project');
+const ProjectTask = require('../models/ProjectTask');
 const requireProjectAccess = require('../middleware/projectAccessMiddleware');
 const {
   canEditProjectTasks,
   canManageMembers,
   canAssignMemberRole,
+  canMemberUpdateProjectTask,
   canManageMemberRole,
   getProjectRole,
   serializeProject,
+  validateAssigneeMembership,
   validateProjectInput,
   validateProjectTaskInput,
 } = require('../controllers/projectController');
@@ -75,6 +78,31 @@ test('resolves owner, admin, member, and viewer roles including legacy editors',
   assert.equal(canManageMemberRole('owner', 'admin', 'member'), true);
   assert.equal(canEditProjectTasks(makeProject(), editorId), true);
   assert.equal(canEditProjectTasks(makeProject(), viewerId), false);
+  assert.equal(validateAssigneeMembership(makeProject(), [ownerId, adminId, editorId]), true);
+  assert.equal(validateAssigneeMembership(makeProject(), [viewerId]), false);
+  assert.equal(validateAssigneeMembership(makeProject(), ['507f1f77bcf86cd799439016']), false);
+  assert.equal(
+    validateProjectTaskInput({ title: 'Work', assigneeIds: [editorId, adminId] }).values.assigneeIds.length,
+    2
+  );
+  assert.ok(validateProjectTaskInput({ title: 'Work', assigneeIds: [editorId, editorId] }).error);
+  assert.ok(validateProjectTaskInput({ title: 'Work', assigneeIds: ['invalid'] }).error);
+  assert.equal(
+    canMemberUpdateProjectTask({ assigneeIds: [editorId] }, editorId, { status: 'Completed' }),
+    true
+  );
+  assert.equal(
+    canMemberUpdateProjectTask({ assigneeIds: [adminId] }, editorId, { status: 'Completed' }),
+    false
+  );
+  assert.equal(
+    canMemberUpdateProjectTask({ assigneeIds: [editorId] }, editorId, { title: 'Escalate' }),
+    false
+  );
+  assert.equal(
+    canMemberUpdateProjectTask({ assigneeIds: [editorId] }, editorId, { status: 'Completed', title: 'Escalate' }),
+    false
+  );
 });
 
 test('serializes progress as zero for projects without tasks', () => {
@@ -91,6 +119,20 @@ test('serializes progress as zero for projects without tasks', () => {
   assert.equal(result.progress, 0);
   assert.equal(result.memberCount, 1);
   assert.equal(result.owner.id, ownerId);
+});
+
+test('project tasks default to no assignees and index project assignment queries', () => {
+  const task = new ProjectTask({
+    title: 'Release notes',
+    projectId,
+    createdBy: ownerId,
+  });
+  const indexes = ProjectTask.schema.indexes();
+
+  assert.deepEqual(task.assigneeIds, []);
+  assert.ok(indexes.some(([fields]) =>
+    fields.projectId === 1 && fields.assigneeIds === 1 && fields.status === 1
+  ));
 });
 
 test('project access middleware denies viewers task edits and allows members', async (t) => {

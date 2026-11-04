@@ -2,10 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { getErrorMessage, useAuth } from '../auth/AuthContext'
 import {
+  acceptTaskTransferRequest,
   createTask,
   deleteTask,
+  declineTaskTransferRequest,
   getDashboardSummary,
   getTasks,
+  getTaskTransferRequests,
+  transferTaskToProject,
+  type TaskTransferRequest,
   type DashboardData,
   type Task,
   type TaskInput,
@@ -13,6 +18,7 @@ import {
   type TaskStatus,
   updateTask,
 } from '../services/taskService'
+import { listProjects, type Project } from '../services/projectService'
 
 type SortOrder = 'newest' | 'oldest' | 'deadline'
 
@@ -35,6 +41,11 @@ function displayDate(value: string): string {
 export default function DashboardPage() {
   const { user, logout } = useAuth()
   const [tasks, setTasks] = useState<Task[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [transferRequests, setTransferRequests] = useState<TaskTransferRequest[]>([])
+  const [selectedTransferTaskIds, setSelectedTransferTaskIds] = useState<Record<string, string>>({})
+  const [selectedProjects, setSelectedProjects] = useState<Record<string, string>>({})
+  const [transferActionId, setTransferActionId] = useState<string | null>(null)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [form, setForm] = useState<TaskInput>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -53,12 +64,16 @@ export default function DashboardPage() {
     setIsLoading(true)
 
     try {
-      const [nextTasks, nextDashboardData] = await Promise.all([
+      const [nextTasks, nextDashboardData, nextProjects, nextTransferRequests] = await Promise.all([
         getTasks(),
         getDashboardSummary(),
+        listProjects(),
+        getTaskTransferRequests(),
       ])
       setTasks(nextTasks)
       setDashboardData(nextDashboardData)
+      setProjects(nextProjects)
+      setTransferRequests(nextTransferRequests)
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to load dashboard. Try again.'))
     } finally {
@@ -86,6 +101,11 @@ export default function DashboardPage() {
       return sortOrder === 'newest' ? -difference : difference
     })
   }, [priorityFilter, search, sortOrder, statusFilter, tasks])
+
+  const transferEligibleProjects = projects.filter((project) =>
+    project.owner.id === user?.id ||
+    project.members.some((member) => member.id === user?.id && member.role !== 'viewer')
+  )
 
   if (!user) {
     return <Navigate to="/" replace />
@@ -152,6 +172,68 @@ export default function DashboardPage() {
       }
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to delete task. Try again.'))
+    }
+  }
+
+  async function handleTransferOwnTask(task: Task) {
+    const projectId = selectedProjects[task.id]
+    const project = transferEligibleProjects.find((item) => item.id === projectId)
+    if (!projectId || !project) return
+
+    const accepted = window.confirm(`Move "${task.title}" to ${project.name}? It will no longer be a private task.`)
+    if (!accepted) return
+
+    setError('')
+    setNotice('')
+    setTransferActionId(task.id)
+    try {
+      await transferTaskToProject(task.id, projectId)
+      setNotice('Task moved to the project and assigned to you.')
+      await loadDashboard()
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Unable to move task to the project.'))
+    } finally {
+      setTransferActionId(null)
+    }
+  }
+
+  async function handleAcceptTransferRequest(request: TaskTransferRequest) {
+    const taskId = selectedTransferTaskIds[request.id]
+    const task = tasks.find((item) => item.id === taskId)
+    if (!task) {
+      setError('Select one of your personal tasks to transfer.')
+      return
+    }
+
+    const accepted = window.confirm(
+      `Move "${task.title}" to ${request.project.name}? This removes it from your private tasks and assigns it to you in the project.`,
+    )
+    if (!accepted) return
+
+    setError('')
+    setTransferActionId(request.id)
+    try {
+      await acceptTaskTransferRequest(request.id, task.id)
+      setNotice('Task transferred to the project.')
+      await loadDashboard()
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Unable to transfer this task.'))
+    } finally {
+      setTransferActionId(null)
+    }
+  }
+
+  async function handleDeclineTransferRequest(request: TaskTransferRequest) {
+    setError('')
+    setTransferActionId(request.id)
+    try {
+      await declineTaskTransferRequest(request.id)
+      setTransferRequests((current) => current.filter((item) => item.id !== request.id))
+      setNotice('Transfer request declined. Your personal tasks were not changed.')
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Unable to decline this request.'))
+    } finally {
+      setTransferActionId(null)
     }
   }
 
@@ -332,6 +414,60 @@ export default function DashboardPage() {
       {error && <p className="error task-message" role="alert">{error}</p>}
       {notice && <p className="success task-message" role="status">{notice}</p>}
 
+      {transferRequests.length > 0 && (
+        <section aria-labelledby="transfer-requests-heading" className="transfer-requests-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">PROJECT REQUESTS</p>
+              <h2 id="transfer-requests-heading">Task transfer requests</h2>
+            </div>
+            <span className="task-count">{transferRequests.length}</span>
+          </div>
+          <p className="muted">Your personal task details stay private unless you choose a task and approve its transfer.</p>
+          <ul className="transfer-request-list">
+            {transferRequests.map((request) => (
+              <li className="transfer-request-item" key={request.id}>
+                <div>
+                  <strong>{request.project.name}</strong>
+                  <p>{request.requestedBy.name} ({request.requestedBy.email}) requested a task transfer.</p>
+                </div>
+                <label>
+                  Choose a personal task
+                  <select
+                    onChange={(event) => setSelectedTransferTaskIds((current) => ({
+                      ...current,
+                      [request.id]: event.target.value,
+                    }))}
+                    value={selectedTransferTaskIds[request.id] ?? ''}
+                  >
+                    <option value="">Select a task</option>
+                    {tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
+                  </select>
+                </label>
+                <div className="task-actions">
+                  <button
+                    className="button"
+                    disabled={!selectedTransferTaskIds[request.id] || transferActionId === request.id}
+                    onClick={() => void handleAcceptTransferRequest(request)}
+                    type="button"
+                  >
+                    Approve and transfer
+                  </button>
+                  <button
+                    className="text-button delete-button"
+                    disabled={transferActionId === request.id}
+                    onClick={() => void handleDeclineTransferRequest(request)}
+                    type="button"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="task-list-section">
         <div className="task-list-heading">
           <div>
@@ -401,6 +537,31 @@ export default function DashboardPage() {
                 <div className="task-actions">
                   <button className="text-button" onClick={() => startEditing(task)} type="button">Edit</button>
                   <button className="text-button delete-button" onClick={() => void handleDelete(task)} type="button">Delete</button>
+                  {transferEligibleProjects.length > 0 && (
+                    <>
+                      <select
+                        aria-label={`Move ${task.title} to a project`}
+                        onChange={(event) => setSelectedProjects((current) => ({
+                          ...current,
+                          [task.id]: event.target.value,
+                        }))}
+                        value={selectedProjects[task.id] ?? ''}
+                      >
+                        <option value="">Move to project...</option>
+                        {transferEligibleProjects.map((project) => (
+                          <option key={project.id} value={project.id}>{project.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        className="text-button"
+                        disabled={!selectedProjects[task.id] || transferActionId === task.id}
+                        onClick={() => void handleTransferOwnTask(task)}
+                        type="button"
+                      >
+                        {transferActionId === task.id ? 'Moving...' : 'Move'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </li>
             ))}
