@@ -1384,6 +1384,75 @@ h2 {
   background: #5630c7;
 }
 
+.invitation-form {
+  margin-top: 16px;
+}
+
+.pending-invitations {
+  margin-top: 22px;
+}
+
+.pending-invitations h3 {
+  margin: 0;
+  color: #29364d;
+  font-size: 0.9rem;
+}
+
+.pending-invitations > p {
+  margin-bottom: 0;
+  font-size: 0.82rem;
+}
+
+.invite-avatar {
+  display: grid;
+  place-items: center;
+  background: #f0edfa;
+  color: #5a3aa7;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.confirmation-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(23, 30, 45, 0.48);
+}
+
+.confirmation-dialog {
+  width: min(100%, 420px);
+  padding: 24px;
+  border: 1px solid #e8e9ee;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 60px rgba(20, 25, 40, 0.2);
+}
+
+.confirmation-dialog h2 {
+  margin: 0;
+  color: #273246;
+  font-size: 1.15rem;
+}
+
+.confirmation-dialog p {
+  margin: 12px 0 22px;
+  color: #657084;
+  line-height: 1.5;
+}
+
+.confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.pending-invitations .member-list-item button {
+  flex: 0 0 auto;
+}
+
 .member-list {
   display: grid;
   gap: 2px;

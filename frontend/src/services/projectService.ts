@@ -1,6 +1,6 @@
 import API from '../api'
 
-export type ProjectRole = 'owner' | 'editor' | 'viewer'
+export type ProjectRole = 'owner' | 'admin' | 'member' | 'viewer'
 export type MemberRole = Exclude<ProjectRole, 'owner'>
 export type ProjectTaskStatus = 'Pending' | 'In Progress' | 'Completed'
 export type TaskPriority = 'Low' | 'Medium' | 'High'
@@ -37,6 +37,25 @@ export type ProjectTask = {
   createdAt: string
   updatedAt: string
   createdBy: string
+}
+
+export type ProjectInvitation = {
+  id: string
+  email: string
+  role: MemberRole
+  status: 'pending'
+  deliveryStatus: 'pending' | 'sent' | 'failed'
+  expiresAt: string
+  createdAt: string
+}
+
+export type InvitationDetails = {
+  projectId: string
+  projectName: string
+  email: string
+  role: MemberRole
+  status: 'pending' | 'accepted' | 'expired' | 'revoked'
+  expiresAt: string
 }
 
 export type ProjectInput = Pick<Project, 'name' | 'description'>
@@ -78,6 +97,49 @@ export async function updateProjectMember(
 export async function removeProjectMember(projectId: string, userId: string): Promise<Project> {
   const response = await API.delete<{ project: Project }>(`/projects/${projectId}/members/${userId}`)
   return response.data.project
+}
+
+export async function listProjectInvitations(projectId: string): Promise<ProjectInvitation[]> {
+  const response = await API.get<{ invitations: ProjectInvitation[] }>(`/projects/${projectId}/invitations`)
+  return response.data.invitations
+}
+
+export async function createProjectInvitation(
+  projectId: string,
+  email: string,
+  role: MemberRole,
+): Promise<{ invitation: ProjectInvitation; emailSent: boolean; message: string }> {
+  const response = await API.post<{ invitation: ProjectInvitation; emailSent: boolean; message: string }>(
+    `/projects/${projectId}/invitations`,
+    { email, role },
+  )
+  return response.data
+}
+
+export async function resendProjectInvitation(
+  projectId: string,
+  invitationId: string,
+): Promise<{ invitation: ProjectInvitation; emailSent: boolean; message: string }> {
+  const response = await API.post<{ invitation: ProjectInvitation; emailSent: boolean; message: string }>(
+    `/projects/${projectId}/invitations/${invitationId}/resend`,
+  )
+  return response.data
+}
+
+export async function revokeProjectInvitation(projectId: string, invitationId: string): Promise<void> {
+  await API.delete(`/projects/${projectId}/invitations/${invitationId}`)
+}
+
+export async function getInvitationDetails(token: string): Promise<InvitationDetails> {
+  const response = await API.get<{ invitation: InvitationDetails }>(`/invitations/${encodeURIComponent(token)}`)
+  return response.data.invitation
+}
+
+export async function acceptProjectInvitation(token: string): Promise<{ projectId: string; message: string }> {
+  const response = await API.post<{ projectId: string; message: string }>(
+    `/invitations/${encodeURIComponent(token)}/accept`,
+  )
+  return response.data
 }
 
 export async function getProjectTasks(projectId: string): Promise<ProjectTask[]> {

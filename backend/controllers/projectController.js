@@ -1,12 +1,13 @@
 const mongoose = require('mongoose');
 const Project = require('../models/Project');
+const ProjectInvitation = require('../models/ProjectInvitation');
 const ProjectTask = require('../models/ProjectTask');
 const User = require('../models/User');
 
 const taskFields = ['title', 'description', 'priority', 'status', 'deadline'];
 const priorities = ['Low', 'Medium', 'High'];
 const statuses = ['Pending', 'In Progress', 'Completed'];
-const roles = ['editor', 'viewer'];
+const roles = ['admin', 'member', 'viewer'];
 
 function isValidId(id) {
   return mongoose.isValidObjectId(id) && /^[a-f\d]{24}$/i.test(id);
@@ -108,9 +109,29 @@ function getProjectRole(project, userId) {
     return 'owner';
   }
 
-  return project.members.find(
+  const memberRole = project.members.find(
     (member) => (member.userId?._id?.toString() ?? member.userId.toString()) === userId.toString()
   )?.role ?? null;
+
+  return memberRole === 'editor' ? 'member' : memberRole;
+}
+
+function canManageMembers(project, userId) {
+  return ['owner', 'admin'].includes(getProjectRole(project, userId));
+}
+
+function canAssignMemberRole(actorRole, requestedRole) {
+  return ['owner', 'admin'].includes(actorRole) &&
+    (actorRole === 'owner' || requestedRole !== 'admin');
+}
+
+function canManageMemberRole(actorRole, currentRole, requestedRole) {
+  return ['owner', 'admin'].includes(actorRole) &&
+    (actorRole === 'owner' || (currentRole !== 'admin' && requestedRole !== 'admin'));
+}
+
+function canEditProjectTasks(project, userId) {
+  return ['owner', 'admin', 'member'].includes(getProjectRole(project, userId));
 }
 
 function serializeTask(task) {
@@ -141,7 +162,7 @@ function serializeProject(project, taskStats = { total: 0, completed: 0 }) {
       id: member.userId.id,
       name: member.userId.name,
       email: member.userId.email,
-      role: member.role,
+      role: member.role === 'editor' ? 'member' : member.role,
       joinedAt: member.joinedAt.toISOString(),
     })),
     memberCount: project.members.length + 1,
@@ -242,8 +263,10 @@ async function addProjectMember(req, res) {
     return res.status(404).json({ message: 'Project not found' });
   }
 
-  if (getProjectRole(project, req.userId) !== 'owner') {
-    return res.status(403).json({ message: 'Only the project owner can manage members' });
+  const callerRole = getProjectRole(project, req.userId);
+
+  if (!['owner', 'admin'].includes(callerRole)) {
+    return res.status(403).json({ message: 'Only project owners and admins can manage members' });
   }
 
   const { email, role } = req.body ?? {};
@@ -254,10 +277,15 @@ async function addProjectMember(req, res) {
     Array.isArray(req.body) ||
     Object.keys(req.body).some((field) => !['email', 'role'].includes(field)) ||
     typeof email !== 'string' ||
+    email.trim().length > 254 ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
     !roles.includes(role)
   ) {
-    return res.status(400).json({ message: 'A valid account email and role (editor or viewer) are required' });
+    return res.status(400).json({ message: 'A valid account email and role (admin, member, or viewer) are required' });
+  }
+
+  if (!canAssignMemberRole(callerRole, role)) {
+    return res.status(403).json({ message: 'Only the project owner can assign the admin role' });
   }
 
   const user = await User.findOne({ email: email.trim().toLowerCase() });
@@ -274,10 +302,23 @@ async function addProjectMember(req, res) {
     return res.status(409).json({ message: 'This user is already a project member' });
   }
 
+  const pendingInvitation = await ProjectInvitation.findOne({
+    projectId: project._id,
+    email: user.email,
+    status: 'pending',
+  });
+
+  if (callerRole !== 'owner' && pendingInvitation?.role === 'admin') {
+    return res.status(403).json({ message: 'Only the project owner can manage admin invitations' });
+  }
+
   const updatedProject = await Project.findOneAndUpdate(
     {
       _id: project._id,
-      ownerId: req.userId,
+      $or: [
+        { ownerId: req.userId },
+        { members: { $elemMatch: { userId: req.userId, role: 'admin' } } },
+      ],
       'members.userId': { $ne: user._id },
     },
     { $push: { members: { userId: user._id, role } } },
@@ -289,6 +330,11 @@ async function addProjectMember(req, res) {
   if (!updatedProject) {
     return res.status(409).json({ message: 'This user is already a project member' });
   }
+
+  await ProjectInvitation.updateMany(
+    { projectId: project._id, email: user.email, status: 'pending' },
+    { $set: { status: 'revoked', revokedAt: new Date() } }
+  );
 
   return res.status(201).json({ project: await serializeProjectWithTaskStats(updatedProject) });
 }
@@ -304,8 +350,10 @@ async function updateProjectMember(req, res) {
     return res.status(404).json({ message: 'Project not found' });
   }
 
-  if (getProjectRole(project, req.userId) !== 'owner') {
-    return res.status(403).json({ message: 'Only the project owner can manage members' });
+  const callerRole = getProjectRole(project, req.userId);
+
+  if (!['owner', 'admin'].includes(callerRole)) {
+    return res.status(403).json({ message: 'Only project owners and admins can manage members' });
   }
 
   if (
@@ -316,13 +364,17 @@ async function updateProjectMember(req, res) {
     Object.keys(req.body)[0] !== 'role' ||
     !roles.includes(req.body.role)
   ) {
-    return res.status(400).json({ message: 'Role must be editor or viewer' });
+    return res.status(400).json({ message: 'Role must be admin, member, or viewer' });
   }
 
   const member = project.members.find((item) => item.userId.id === req.params.userId);
 
   if (!member) {
     return res.status(404).json({ message: 'Project member not found' });
+  }
+
+  if (!canManageMemberRole(callerRole, member.role, req.body.role)) {
+    return res.status(403).json({ message: 'Only the project owner can manage admin roles' });
   }
 
   member.role = req.body.role;
@@ -341,14 +393,20 @@ async function removeProjectMember(req, res) {
     return res.status(404).json({ message: 'Project not found' });
   }
 
-  if (getProjectRole(project, req.userId) !== 'owner') {
-    return res.status(403).json({ message: 'Only the project owner can manage members' });
+  const callerRole = getProjectRole(project, req.userId);
+
+  if (!['owner', 'admin'].includes(callerRole)) {
+    return res.status(403).json({ message: 'Only project owners and admins can manage members' });
   }
 
   const member = project.members.find((item) => item.userId.id === req.params.userId);
 
   if (!member) {
     return res.status(404).json({ message: 'Project member not found' });
+  }
+
+  if (!canManageMemberRole(callerRole, member.role)) {
+    return res.status(403).json({ message: 'Only the project owner can remove admins' });
   }
 
   project.members = project.members.filter((item) => item.userId.id !== req.params.userId);
@@ -419,6 +477,10 @@ async function deleteProjectTask(req, res) {
 
 module.exports = {
   addProjectMember,
+  canAssignMemberRole,
+  canEditProjectTasks,
+  canManageMemberRole,
+  canManageMembers,
   createProject,
   createProjectTask,
   deleteProjectTask,
