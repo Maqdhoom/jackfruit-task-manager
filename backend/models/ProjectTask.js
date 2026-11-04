@@ -46,6 +46,11 @@ const projectTaskSchema = new mongoose.Schema(
       }],
       default: [],
     },
+    commentVersion: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
   },
   { timestamps: true }
 );

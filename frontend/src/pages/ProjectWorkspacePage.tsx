@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { getErrorMessage, useAuth } from '../auth/AuthContext'
+import ProjectActivityFeed from '../components/ProjectActivityFeed'
+import TaskComments from '../components/TaskComments'
 import {
   addProjectMember,
   createProjectInvitation,
@@ -27,6 +29,7 @@ import {
   type ProjectTaskStatus,
   type TaskPriority,
 } from '../services/projectService'
+import { notifyProjectActivityChanged } from '../services/collaborationService'
 
 const statuses: ProjectTaskStatus[] = ['Pending', 'In Progress', 'Completed']
 const emptyTask: ProjectTaskInput = {
@@ -58,6 +61,7 @@ export default function ProjectWorkspacePage() {
   const [isConfirmingCompletion, setIsConfirmingCompletion] = useState(false)
   const [form, setForm] = useState<ProjectTaskInput>(emptyTask)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [commentTaskId, setCommentTaskId] = useState<string | null>(null)
   const [email, setEmail] = useState('')
   const [memberRole, setMemberRole] = useState<MemberRole>('member')
   const [inviteEmail, setInviteEmail] = useState('')
@@ -150,11 +154,13 @@ export default function ProjectWorkspacePage() {
     try {
       if (editingId) {
         await updateProjectTask(projectId, editingId, form)
+        notifyProjectActivityChanged(projectId)
         setNotice('Task updated.')
       } else {
         const input = { ...form }
         if (!canManageProjectTasks) delete input.assigneeIds
         await createProjectTask(projectId, input)
+        notifyProjectActivityChanged(projectId)
         setNotice('Task added to the project.')
       }
       cancelEditing()
@@ -177,6 +183,7 @@ export default function ProjectWorkspacePage() {
     setError('')
     try {
       await updateProjectTask(projectId, task.id, { status })
+      notifyProjectActivityChanged(projectId)
       await loadWorkspace(false)
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to update task status. Try again.'))
@@ -189,6 +196,7 @@ export default function ProjectWorkspacePage() {
     setIsConfirmingCompletion(true)
     try {
       await updateProjectTask(projectId, taskToComplete.id, { status: 'Completed' })
+      notifyProjectActivityChanged(projectId)
       setTaskToComplete(null)
       setNotice('Task marked as completed.')
       await loadWorkspace(false)
@@ -201,9 +209,12 @@ export default function ProjectWorkspacePage() {
 
   async function handleDeleteTask(task: ProjectTask) {
     if (!projectId) return
+    if (!window.confirm(`Delete "${task.title}" and its shared comments? The task will remain in project history. Your private notes remain private.`)) return
     setError('')
     try {
       await deleteProjectTask(projectId, task.id)
+      notifyProjectActivityChanged(projectId)
+      if (commentTaskId === task.id) setCommentTaskId(null)
       await loadWorkspace(false)
       setNotice('Task deleted.')
       if (editingId === task.id) cancelEditing()
@@ -255,6 +266,7 @@ export default function ProjectWorkspacePage() {
     setTeamActionId(userId)
     try {
       setProject(await updateProjectMember(projectId, userId, nextRole))
+      notifyProjectActivityChanged(projectId)
       setNotice('Member role updated.')
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to update member role. Try again.'))
@@ -269,6 +281,7 @@ export default function ProjectWorkspacePage() {
     setTeamActionId(userId)
     try {
       setProject(await removeProjectMember(projectId, userId))
+      notifyProjectActivityChanged(projectId)
       setNotice('Member removed from the project.')
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to remove member. Try again.'))
@@ -516,6 +529,21 @@ export default function ProjectWorkspacePage() {
                                   </select>
                                 )}
                               </div>
+                              <button
+                                aria-expanded={commentTaskId === task.id}
+                                className="text-button task-comments-toggle"
+                                onClick={() => setCommentTaskId((current) => current === task.id ? null : task.id)}
+                                type="button"
+                              >
+                                {commentTaskId === task.id ? 'Hide comments' : 'Comments'}
+                              </button>
+                              {commentTaskId === task.id && (
+                                <TaskComments
+                                  canComment={role !== null && role !== 'viewer'}
+                                  projectId={projectId}
+                                  taskId={task.id}
+                                />
+                              )}
                             </li>
                           ))}
                         </ul>
@@ -526,6 +554,8 @@ export default function ProjectWorkspacePage() {
                   )
                 })}
               </section>
+
+              {projectId && <ProjectActivityFeed projectId={projectId} />}
 
               <section aria-labelledby="members-heading" className="member-management">
                   <div className="member-management-heading">

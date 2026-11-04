@@ -1,6 +1,11 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
 const requireProjectAccess = require('../middleware/projectAccessMiddleware');
+const { listProjectActivity } = require('../controllers/projectActivityController');
+const {
+  createProjectTaskComment,
+  listProjectTaskComments,
+} = require('../controllers/taskCommentController');
 const {
   addProjectMember,
   createProject,
@@ -28,6 +33,7 @@ const router = express.Router();
 router.use(authMiddleware);
 router.route('/').get(listProjects).post(createProject);
 router.get('/:projectId', getProject);
+router.get('/:projectId/activity', requireProjectAccess(), listProjectActivity);
 router.post('/:projectId/members', addProjectMember);
 router.patch('/:projectId/members/:userId', updateProjectMember);
 router.delete('/:projectId/members/:userId', removeProjectMember);
@@ -47,5 +53,8 @@ router.get('/:projectId/tasks', requireProjectAccess(), getProjectTasks);
 router.post('/:projectId/tasks', requireProjectAccess('member'), createProjectTask);
 router.patch('/:projectId/tasks/:taskId', requireProjectAccess('member'), updateProjectTask);
 router.delete('/:projectId/tasks/:taskId', requireProjectAccess('admin'), deleteProjectTask);
+router.route('/:projectId/tasks/:taskId/comments')
+  .get(requireProjectAccess(), listProjectTaskComments)
+  .post(requireProjectAccess(), createProjectTaskComment);
 
 module.exports = router;

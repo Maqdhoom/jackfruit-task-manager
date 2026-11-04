@@ -2,8 +2,10 @@ const mongoose = require('mongoose');
 const Project = require('../models/Project');
 const ProjectInvitation = require('../models/ProjectInvitation');
 const ProjectTask = require('../models/ProjectTask');
+const TaskComment = require('../models/TaskComment');
 const TaskTransferRequest = require('../models/TaskTransferRequest');
 const User = require('../models/User');
+const { buildTaskChanges, recordProjectTaskActivity } = require('../services/projectTaskActivityService');
 
 const taskFields = ['title', 'description', 'priority', 'status', 'deadline', 'assigneeIds'];
 const priorities = ['Low', 'Medium', 'High'];
@@ -184,6 +186,31 @@ function validateAssigneeMembership(project, assigneeIds) {
   return assigneeIds.every((assigneeId) =>
     eligibleAssignees.has(assigneeId.toString().toLowerCase())
   );
+}
+
+async function clearMemberAssignments(projectId, memberUserId, actorId, session) {
+  const tasks = await ProjectTask.find({
+    projectId,
+    assigneeIds: memberUserId,
+  }).session(session);
+
+  for (const task of tasks) {
+    const assigneeIds = task.assigneeIds.filter(
+      (assigneeId) => assigneeId.toString() !== memberUserId.toString()
+    );
+    const changes = buildTaskChanges(task, { assigneeIds });
+    task.assigneeIds = assigneeIds;
+    await task.save({ session });
+    await recordProjectTaskActivity({
+      projectId,
+      taskId: task._id,
+      taskTitle: task.title,
+      actorId,
+      type: 'task_updated',
+      changes,
+      session,
+    });
+  }
 }
 
 function canMemberUpdateProjectTask(task, userId, values) {
@@ -435,11 +462,7 @@ async function updateProjectMember(req, res) {
       await project.save({ session });
 
       if (member.role === 'viewer') {
-        await ProjectTask.updateMany(
-          { projectId: project._id, assigneeIds: member.userId._id },
-          { $pull: { assigneeIds: member.userId._id } },
-          { session }
-        );
+        await clearMemberAssignments(project._id, member.userId._id, req.userId, session);
         await TaskTransferRequest.updateMany(
           { projectId: project._id, taskOwnerId: member.userId._id, status: 'pending' },
           { $set: { status: 'cancelled', respondedAt: new Date() } },
@@ -495,11 +518,7 @@ async function removeProjectMember(req, res) {
   try {
     await session.withTransaction(async () => {
       await project.save({ session });
-      await ProjectTask.updateMany(
-        { projectId: project._id, assigneeIds: req.params.userId },
-        { $pull: { assigneeIds: req.params.userId } },
-        { session }
-      );
+      await clearMemberAssignments(project._id, req.params.userId, req.userId, session);
       await TaskTransferRequest.updateMany(
         {
           projectId: project._id,
@@ -555,11 +574,27 @@ async function createProjectTask(req, res) {
     }
   }
 
-  const task = await ProjectTask.create({
-    ...values,
-    projectId: req.project._id,
-    createdBy: req.userId,
-  });
+  const session = await mongoose.startSession();
+  let task;
+  try {
+    await session.withTransaction(async () => {
+      [task] = await ProjectTask.create([{
+        ...values,
+        projectId: req.project._id,
+        createdBy: req.userId,
+      }], { session });
+      await recordProjectTaskActivity({
+        projectId: req.project._id,
+        taskId: task._id,
+        taskTitle: task.title,
+        actorId: req.userId,
+        type: 'task_created',
+        session,
+      });
+    });
+  } finally {
+    await session.endSession();
+  }
   await task.populate('assigneeIds', 'name email');
   return res.status(201).json({ task: serializeTask(task) });
 }
@@ -576,50 +611,56 @@ async function updateProjectTask(req, res) {
   }
 
   const role = getProjectRole(req.project, req.userId);
+  if (!['owner', 'admin', 'member'].includes(role)) {
+    return res.status(403).json({ message: 'You do not have permission to update project tasks' });
+  }
+  if (
+    (role === 'owner' || role === 'admin') &&
+    Object.hasOwn(validation.values, 'assigneeIds') &&
+    !validateAssigneeMembership(req.project, validation.values.assigneeIds)
+  ) {
+    return res.status(400).json({ message: 'Every assignee must be an active, task-eligible member of this project' });
+  }
+
+  const session = await mongoose.startSession();
   let task;
-
-  if (role === 'owner' || role === 'admin') {
-    if (
-      Object.hasOwn(validation.values, 'assigneeIds') &&
-      !validateAssigneeMembership(req.project, validation.values.assigneeIds)
-    ) {
-      return res.status(400).json({ message: 'Every assignee must be an active, task-eligible member of this project' });
-    }
-
-    task = await ProjectTask.findOneAndUpdate(
-      { _id: req.params.taskId, projectId: req.project._id },
-      validation.values,
-      { new: true, runValidators: true }
-    );
-  } else if (role === 'member') {
-    const taskForMember = await ProjectTask.findOne({
-      _id: req.params.taskId,
-      projectId: req.project._id,
-    });
-
-    if (!taskForMember) {
-      return res.status(404).json({ message: 'Project task not found' });
-    }
-
-    if (!canMemberUpdateProjectTask(taskForMember, req.userId, validation.values)) {
-      return res.status(403).json({ message: 'Members can update the status of tasks assigned to them only' });
-    }
-
-    task = await ProjectTask.findOneAndUpdate(
-      {
+  let forbidden = false;
+  try {
+    await session.withTransaction(async () => {
+      task = await ProjectTask.findOne({
         _id: req.params.taskId,
         projectId: req.project._id,
-        assigneeIds: req.userId,
-      },
-      { $set: { status: validation.values.status } },
-      { new: true, runValidators: true }
-    );
-  } else {
-    return res.status(403).json({ message: 'You do not have permission to update project tasks' });
+      }).session(session);
+      if (!task) return;
+
+      if (role === 'member' && !canMemberUpdateProjectTask(task, req.userId, validation.values)) {
+        forbidden = true;
+        return;
+      }
+
+      const changes = buildTaskChanges(task, validation.values);
+      if (changes.length === 0) return;
+      task.set(validation.values);
+      await task.save({ session });
+      await recordProjectTaskActivity({
+        projectId: req.project._id,
+        taskId: task._id,
+        taskTitle: task.title,
+        actorId: req.userId,
+        type: 'task_updated',
+        changes,
+        session,
+      });
+    });
+  } finally {
+    await session.endSession();
   }
 
   if (!task) {
     return res.status(404).json({ message: 'Project task not found' });
+  }
+  if (forbidden) {
+    return res.status(403).json({ message: 'Members can update the status of tasks assigned to them only' });
   }
 
   await task.populate('assigneeIds', 'name email');
@@ -631,10 +672,34 @@ async function deleteProjectTask(req, res) {
     return res.status(400).json({ message: 'Invalid task ID' });
   }
 
-  const task = await ProjectTask.findOneAndDelete({
-    _id: req.params.taskId,
-    projectId: req.project._id,
-  });
+  const session = await mongoose.startSession();
+  let task;
+  try {
+    await session.withTransaction(async () => {
+      task = await ProjectTask.findOne({
+        _id: req.params.taskId,
+        projectId: req.project._id,
+      }).session(session);
+      if (!task) return;
+
+      await recordProjectTaskActivity({
+        projectId: req.project._id,
+        taskId: task._id,
+        taskTitle: task.title,
+        actorId: req.userId,
+        type: 'task_deleted',
+        session,
+      });
+      await TaskComment.deleteMany({
+        taskType: 'project',
+        projectId: req.project._id,
+        taskId: task._id,
+      }, { session });
+      await ProjectTask.deleteOne({ _id: task._id, projectId: req.project._id }, { session });
+    });
+  } finally {
+    await session.endSession();
+  }
 
   if (!task) {
     return res.status(404).json({ message: 'Project task not found' });

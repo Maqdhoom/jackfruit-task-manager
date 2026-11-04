@@ -2,7 +2,10 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const Project = require('../models/Project');
 const ProjectTask = require('../models/ProjectTask');
+const ProjectTaskActivity = require('../models/ProjectTaskActivity');
 const requireProjectAccess = require('../middleware/projectAccessMiddleware');
+const { buildTaskChanges } = require('../services/projectTaskActivityService');
+const { serializeChanges } = require('../controllers/projectActivityController');
 const {
   canEditProjectTasks,
   canManageMembers,
@@ -133,6 +136,60 @@ test('project tasks default to no assignees and index project assignment queries
   assert.ok(indexes.some(([fields]) =>
     fields.projectId === 1 && fields.assigneeIds === 1 && fields.status === 1
   ));
+});
+
+test('project task activity stores immutable timeline entries and indexes project history', () => {
+  const activity = new ProjectTaskActivity({
+    projectId,
+    taskId: projectId,
+    taskTitle: 'Release notes',
+    actorId: ownerId,
+    type: 'task_updated',
+    changes: [{ field: 'status', from: 'Pending', to: 'Completed' }],
+  });
+
+  assert.equal(activity.type, 'task_updated');
+  assert.equal(activity.changes[0].field, 'status');
+  assert.ok(ProjectTaskActivity.schema.indexes().some(([fields]) =>
+    fields.projectId === 1 && fields.createdAt === -1 && fields._id === -1
+  ));
+  assert.ok(ProjectTaskActivity.schema.indexes().some(([fields, options]) =>
+    fields.taskId === 1 && fields.type === 1 &&
+    options.unique === true &&
+    options.partialFilterExpression.type === 'task_created'
+  ));
+});
+
+test('activity change snapshots include only fields whose values changed', () => {
+  const task = {
+    title: 'Release notes',
+    status: 'Pending',
+    deadline: null,
+    assigneeIds: [ownerId],
+  };
+  const changes = buildTaskChanges(task, {
+    title: 'Release notes',
+    status: 'Completed',
+    deadline: new Date('2026-11-08T00:00:00.000Z'),
+    assigneeIds: [ownerId],
+  });
+
+  assert.deepEqual(changes, [
+    { field: 'status', from: 'Pending', to: 'Completed' },
+    { field: 'deadline', from: null, to: '2026-11-08T00:00:00.000Z' },
+  ]);
+});
+
+test('activity responses summarize assignment changes without exposing user IDs or descriptions', () => {
+  assert.deepEqual(serializeChanges([
+    { field: 'assigneeIds', from: [ownerId, editorId], to: [ownerId] },
+    { field: 'description', from: 'private old text', to: 'private new text' },
+    { field: 'status', from: 'Pending', to: 'Completed' },
+  ]), [
+    { field: 'assigneeIds', from: '2 assignees', to: '1 assignee' },
+    { field: 'description', from: null, to: null },
+    { field: 'status', from: 'Pending', to: 'Completed' },
+  ]);
 });
 
 test('project access middleware denies viewers task edits and allows members', async (t) => {

@@ -33,6 +33,11 @@ const taskSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    commentVersion: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
   },
   { timestamps: true }
 );

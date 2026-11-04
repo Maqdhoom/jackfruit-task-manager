@@ -2,7 +2,9 @@ const mongoose = require('mongoose');
 const Project = require('../models/Project');
 const ProjectTask = require('../models/ProjectTask');
 const Task = require('../models/Task');
+const TaskComment = require('../models/TaskComment');
 const TaskTransferRequest = require('../models/TaskTransferRequest');
+const { recordProjectTaskActivity } = require('../services/projectTaskActivityService');
 
 const priorities = ['Low', 'Medium', 'High'];
 const statuses = ['Pending', 'In Progress', 'Completed'];
@@ -261,6 +263,25 @@ async function transferPersonalTask(taskId, userId, projectId, requestId = null)
         assigneeIds: [userId],
       }], { session });
 
+      await TaskComment.updateMany(
+        {
+          taskType: 'personal',
+          taskId: personalTask._id,
+          ownerId: userId,
+          transferredProjectTaskId: null,
+        },
+        { $set: { transferredProjectTaskId: projectTask._id } },
+        { session }
+      );
+      await recordProjectTaskActivity({
+        projectId: project._id,
+        taskId: projectTask._id,
+        taskTitle: projectTask.title,
+        actorId: userId,
+        type: 'task_transferred',
+        session,
+      });
+
       const deletedTask = await Task.findOneAndDelete({ _id: personalTask._id, userId }, { session });
       if (!deletedTask) throw new TaskTransferError(409, 'The personal task changed during transfer. Please try again.');
 
@@ -408,7 +429,22 @@ async function deleteTask(req, res) {
     return res.status(400).json({ message: 'Invalid task ID' });
   }
 
-  const task = await Task.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+  const session = await mongoose.startSession();
+  let task;
+  try {
+    await session.withTransaction(async () => {
+      task = await Task.findOne({ _id: req.params.id, userId: req.userId }).session(session);
+      if (!task) return;
+      await TaskComment.deleteMany({
+        taskType: 'personal',
+        taskId: task._id,
+        ownerId: req.userId,
+      }, { session });
+      await Task.deleteOne({ _id: task._id, userId: req.userId }, { session });
+    });
+  } finally {
+    await session.endSession();
+  }
 
   if (!task) {
     return res.status(404).json({ message: 'Task not found' });
