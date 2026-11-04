@@ -1,8 +1,9 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 
 export default function ProtectedRoute() {
   const { user, status, error, refresh } = useAuth()
+  const location = useLocation()
 
   if (status === 'loading') {
     return <p className="notice" role="status">Checking your session...</p>
@@ -17,5 +18,5 @@ export default function ProtectedRoute() {
     )
   }
 
-  return user ? <Outlet /> : <Navigate to="/" replace />
+  return user ? <Outlet /> : <Navigate replace state={{ from: location }} to="/" />
 }

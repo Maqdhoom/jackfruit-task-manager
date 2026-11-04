@@ -7,6 +7,7 @@ const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const taskRoutes = require('./routes/taskRoutes');
+const invitationRoutes = require('./routes/invitationRoutes');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -26,6 +27,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/invitations', invitationRoutes);
 app.get('/', (req, res) => {
   res.send('Task Manager API is running');
 });

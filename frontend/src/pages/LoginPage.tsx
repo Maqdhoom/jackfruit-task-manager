@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { getErrorMessage, useAuth } from '../auth/AuthContext'
 
 export default function LoginPage() {
   const { login, status } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -18,7 +19,8 @@ export default function LoginPage() {
 
     try {
       await login(email, password)
-      navigate('/dashboard', { replace: true })
+      const returnPath = getReturnPath(location.state)
+      navigate(returnPath ?? '/dashboard', { replace: true })
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Login failed. Please try again.'))
     } finally {
@@ -58,7 +60,16 @@ export default function LoginPage() {
           {isSubmitting ? 'Logging in...' : status === 'loading' ? 'Checking session...' : 'Log in'}
         </button>
       </form>
-      <p className="form-footer">New here? <Link to="/register">Create an account</Link></p>
+      <p className="form-footer">New here? <Link state={location.state} to="/register">Create an account</Link></p>
     </main>
   )
+}
+
+function getReturnPath(state: unknown): string | null {
+  if (!state || typeof state !== 'object' || !('from' in state)) return null
+  const from = state.from
+  if (!from || typeof from !== 'object' || !('pathname' in from) || typeof from.pathname !== 'string') return null
+  if (!from.pathname.startsWith('/') || from.pathname.startsWith('//')) return null
+  const search = 'search' in from && typeof from.search === 'string' ? from.search : ''
+  return `${from.pathname}${search}`
 }

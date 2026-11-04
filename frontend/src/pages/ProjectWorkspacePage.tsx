@@ -3,15 +3,20 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { getErrorMessage, useAuth } from '../auth/AuthContext'
 import {
   addProjectMember,
+  createProjectInvitation,
   createProjectTask,
   deleteProjectTask,
   getProject,
   getProjectTasks,
+  listProjectInvitations,
   removeProjectMember,
+  resendProjectInvitation,
+  revokeProjectInvitation,
   updateProjectMember,
   updateProjectTask,
   type MemberRole,
   type Project,
+  type ProjectInvitation,
   type ProjectRole,
   type ProjectTask,
   type ProjectTaskInput,
@@ -43,10 +48,16 @@ export default function ProjectWorkspacePage() {
   const [project, setProject] = useState<Project | null>(null)
   const [role, setRole] = useState<ProjectRole | null>(null)
   const [tasks, setTasks] = useState<ProjectTask[]>([])
+  const [taskToComplete, setTaskToComplete] = useState<ProjectTask | null>(null)
+  const [isConfirmingCompletion, setIsConfirmingCompletion] = useState(false)
   const [form, setForm] = useState<ProjectTaskInput>(emptyTask)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [email, setEmail] = useState('')
-  const [memberRole, setMemberRole] = useState<MemberRole>('editor')
+  const [memberRole, setMemberRole] = useState<MemberRole>('member')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<MemberRole>('member')
+  const [invitations, setInvitations] = useState<ProjectInvitation[]>([])
+  const [teamActionId, setTeamActionId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
@@ -58,9 +69,12 @@ export default function ProjectWorkspacePage() {
     if (showLoading) setIsLoading(true)
     try {
       const [details, projectTasks] = await Promise.all([getProject(projectId), getProjectTasks(projectId)])
+      const canManageTeam = details.role === 'owner' || details.role === 'admin'
+      const pendingInvitations = canManageTeam ? await listProjectInvitations(projectId) : []
       setProject(details.project)
       setRole(details.role)
       setTasks(projectTasks)
+      setInvitations(pendingInvitations)
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to load this project. Try again.'))
     } finally {
@@ -76,8 +90,8 @@ export default function ProjectWorkspacePage() {
     return <Navigate to="/" replace />
   }
 
-  const canEditTasks = role === 'owner' || role === 'editor'
-  const canManageMembers = role === 'owner'
+  const canEditTasks = role === 'owner' || role === 'admin' || role === 'member'
+  const canManageMembers = role === 'owner' || role === 'admin'
 
   function setField<K extends keyof ProjectTaskInput>(field: K, value: ProjectTaskInput[K]) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -125,12 +139,34 @@ export default function ProjectWorkspacePage() {
 
   async function changeTaskStatus(task: ProjectTask, status: ProjectTaskStatus) {
     if (!projectId) return
+
+    if (status === 'Completed' && task.status !== 'Completed') {
+      setTaskToComplete(task)
+      return
+    }
+
     setError('')
     try {
       await updateProjectTask(projectId, task.id, { status })
       await loadWorkspace(false)
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to update task status. Try again.'))
+    }
+  }
+
+  async function confirmTaskCompletion() {
+    if (!projectId || !taskToComplete) return
+    setError('')
+    setIsConfirmingCompletion(true)
+    try {
+      await updateProjectTask(projectId, taskToComplete.id, { status: 'Completed' })
+      setTaskToComplete(null)
+      setNotice('Task marked as completed.')
+      await loadWorkspace(false)
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Unable to complete task. Try again.'))
+    } finally {
+      setIsConfirmingCompletion(false)
     }
   }
 
@@ -152,35 +188,95 @@ export default function ProjectWorkspacePage() {
     if (!projectId) return
     setError('')
     setNotice('')
+    setTeamActionId('add-member')
     try {
       const updated = await addProjectMember(projectId, email, memberRole)
       setProject(updated)
       setEmail('')
       setNotice('Team member added.')
+      await loadWorkspace(false)
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to add team member. Try again.'))
+    } finally {
+      setTeamActionId(null)
+    }
+  }
+
+  async function handleCreateInvitation(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!projectId) return
+    setError('')
+    setNotice('')
+    setTeamActionId('create-invitation')
+    try {
+      const result = await createProjectInvitation(projectId, inviteEmail, inviteRole)
+      setInviteEmail('')
+      setNotice(result.message)
+      await loadWorkspace(false)
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Unable to send the invitation. Try again.'))
+    } finally {
+      setTeamActionId(null)
     }
   }
 
   async function changeMemberRole(userId: string, nextRole: MemberRole) {
     if (!projectId) return
     setError('')
+    setTeamActionId(userId)
     try {
       setProject(await updateProjectMember(projectId, userId, nextRole))
       setNotice('Member role updated.')
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to update member role. Try again.'))
+    } finally {
+      setTeamActionId(null)
     }
   }
 
   async function handleRemoveMember(userId: string) {
     if (!projectId) return
     setError('')
+    setTeamActionId(userId)
     try {
       setProject(await removeProjectMember(projectId, userId))
       setNotice('Member removed from the project.')
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to remove member. Try again.'))
+    } finally {
+      setTeamActionId(null)
+    }
+  }
+
+  async function handleResendInvitation(invitation: ProjectInvitation) {
+    if (!projectId) return
+    setError('')
+    setNotice('')
+    setTeamActionId(invitation.id)
+    try {
+      const result = await resendProjectInvitation(projectId, invitation.id)
+      setNotice(result.message)
+      await loadWorkspace(false)
+    } catch (requestError) {
+      await loadWorkspace(false)
+      setError(getErrorMessage(requestError, 'Unable to resend the invitation. Try again.'))
+    } finally {
+      setTeamActionId(null)
+    }
+  }
+
+  async function handleRevokeInvitation(invitation: ProjectInvitation) {
+    if (!projectId) return
+    setError('')
+    setTeamActionId(invitation.id)
+    try {
+      await revokeProjectInvitation(projectId, invitation.id)
+      setInvitations((current) => current.filter((item) => item.id !== invitation.id))
+      setNotice('Invitation revoked.')
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Unable to revoke the invitation. Try again.'))
+    } finally {
+      setTeamActionId(null)
     }
   }
 
@@ -317,25 +413,47 @@ export default function ProjectWorkspacePage() {
                 })}
               </section>
 
-              {canManageMembers && (
-                <section aria-labelledby="members-heading" className="member-management">
+              <section aria-labelledby="members-heading" className="member-management">
                   <div className="member-management-heading">
                     <div><p className="eyebrow">COLLABORATION</p><h2 id="members-heading">Team members</h2></div>
                     <span className="task-count">{project.memberCount}</span>
                   </div>
-                  <form className="member-add-form" onSubmit={(event) => void handleAddMember(event)}>
-                    <label>
-                      Add an existing account by email
-                      <input autoComplete="email" onChange={(event) => setEmail(event.target.value)} placeholder="teammate@example.com" required type="email" value={email} />
-                    </label>
-                    <label>
-                      Role
-                      <select onChange={(event) => setMemberRole(event.target.value as MemberRole)} value={memberRole}>
-                        <option value="editor">Editor</option><option value="viewer">Viewer</option>
-                      </select>
-                    </label>
-                    <button className="button" type="submit">Add member</button>
-                  </form>
+                  {canManageMembers && (
+                    <>
+                      <form className="member-add-form" onSubmit={(event) => void handleAddMember(event)}>
+                        <label>
+                          Add a registered user by email
+                          <input autoComplete="email" onChange={(event) => setEmail(event.target.value)} placeholder="teammate@example.com" required type="email" value={email} />
+                        </label>
+                        <label>
+                          Role
+                          <select onChange={(event) => setMemberRole(event.target.value as MemberRole)} value={memberRole}>
+                            {role === 'owner' && <option value="admin">Admin</option>}
+                            <option value="member">Member</option><option value="viewer">Viewer</option>
+                          </select>
+                        </label>
+                        <button className="button" disabled={teamActionId === 'add-member'} type="submit">
+                          {teamActionId === 'add-member' ? 'Adding...' : 'Add member'}
+                        </button>
+                      </form>
+                      <form className="member-add-form invitation-form" onSubmit={(event) => void handleCreateInvitation(event)}>
+                        <label>
+                          Invite someone by email
+                          <input autoComplete="email" onChange={(event) => setInviteEmail(event.target.value)} placeholder="new-teammate@example.com" required type="email" value={inviteEmail} />
+                        </label>
+                        <label>
+                          Role
+                          <select onChange={(event) => setInviteRole(event.target.value as MemberRole)} value={inviteRole}>
+                            {role === 'owner' && <option value="admin">Admin</option>}
+                            <option value="member">Member</option><option value="viewer">Viewer</option>
+                          </select>
+                        </label>
+                        <button className="button" disabled={teamActionId === 'create-invitation'} type="submit">
+                          {teamActionId === 'create-invitation' ? 'Sending...' : 'Send invite'}
+                        </button>
+                      </form>
+                    </>
+                  )}
                   <ul className="member-list">
                     <li className="member-list-item">
                       <span className="member-avatar owner-avatar">{project.owner.name.slice(0, 1).toUpperCase()}</span>
@@ -346,15 +464,73 @@ export default function ProjectWorkspacePage() {
                       <li className="member-list-item" key={member.id}>
                         <span className={`member-avatar member-color-${index % 4}`}>{member.name.slice(0, 1).toUpperCase()}</span>
                         <span className="member-identity"><strong>{member.name}</strong><small>{member.email}</small></span>
-                        <select aria-label={`Role for ${member.name}`} onChange={(event) => void changeMemberRole(member.id, event.target.value as MemberRole)} value={member.role}>
-                          <option value="editor">Editor</option><option value="viewer">Viewer</option>
-                        </select>
-                        <button aria-label={`Remove ${member.name}`} className="text-button delete-button" onClick={() => void handleRemoveMember(member.id)} type="button">Remove</button>
+                        {canManageMembers && (role === 'owner' || member.role !== 'admin') ? (
+                          <>
+                            <select
+                              aria-label={`Role for ${member.name}`}
+                              disabled={teamActionId === member.id}
+                              onChange={(event) => void changeMemberRole(member.id, event.target.value as MemberRole)}
+                              value={member.role}
+                            >
+                              {role === 'owner' && <option value="admin">Admin</option>}
+                              <option value="member">Member</option><option value="viewer">Viewer</option>
+                            </select>
+                            <button
+                              aria-label={`Remove ${member.name}`}
+                              className="text-button delete-button"
+                              disabled={teamActionId === member.id}
+                              onClick={() => void handleRemoveMember(member.id)}
+                              type="button"
+                            >
+                              Remove
+                            </button>
+                          </>
+                        ) : <span className="role-pill">{member.role === 'admin' ? 'Admin' : member.role === 'viewer' ? 'Viewer' : 'Member'}</span>}
                       </li>
                     ))}
                   </ul>
+                  {canManageMembers && (
+                    <div className="pending-invitations">
+                      <h3>Pending invitations</h3>
+                      {invitations.length ? (
+                        <ul className="member-list">
+                          {invitations.map((invitation) => (
+                            <li className="member-list-item" key={invitation.id}>
+                              <span className="member-avatar invite-avatar" aria-hidden="true">@</span>
+                              <span className="member-identity">
+                                <strong>{invitation.email}</strong>
+                                <small>{invitation.role} · Expires {displayDate(invitation.expiresAt)}</small>
+                                <small className={invitation.deliveryStatus === 'failed' ? 'error' : 'muted'}>
+                                  Email {invitation.deliveryStatus}
+                                </small>
+                              </span>
+                              {(role === 'owner' || invitation.role !== 'admin') && (
+                                <>
+                                  <button
+                                    className="text-button"
+                                    disabled={teamActionId === invitation.id}
+                                    onClick={() => void handleResendInvitation(invitation)}
+                                    type="button"
+                                  >
+                                    Resend
+                                  </button>
+                                <button
+                                  className="text-button delete-button"
+                                  disabled={teamActionId === invitation.id}
+                                  onClick={() => void handleRevokeInvitation(invitation)}
+                                  type="button"
+                                >
+                                  Revoke
+                                </button>
+                                </>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="muted">No pending invitations.</p>}
+                    </div>
+                  )}
                 </section>
-              )}
             </>
           ) : (
             <div className="projects-empty">
@@ -366,6 +542,40 @@ export default function ProjectWorkspacePage() {
           )}
         </div>
       </section>
+      {taskToComplete && (
+        <div className="confirmation-backdrop">
+          <section
+            aria-describedby="complete-task-description"
+            aria-labelledby="complete-task-title"
+            aria-modal="true"
+            className="confirmation-dialog"
+            role="alertdialog"
+          >
+            <h2 id="complete-task-title">Complete this task?</h2>
+            <p id="complete-task-description">
+              Mark <strong>{taskToComplete.title}</strong> as completed?
+            </p>
+            <div className="confirmation-actions">
+              <button
+                className="button button-secondary"
+                disabled={isConfirmingCompletion}
+                onClick={() => setTaskToComplete(null)}
+                type="button"
+              >
+                No
+              </button>
+              <button
+                className="button"
+                disabled={isConfirmingCompletion}
+                onClick={() => void confirmTaskCompletion()}
+                type="button"
+              >
+                {isConfirmingCompletion ? 'Saving...' : 'Yes, complete'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   )
 }
