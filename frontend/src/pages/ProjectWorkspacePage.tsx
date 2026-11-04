@@ -4,12 +4,15 @@ import { getErrorMessage, useAuth } from '../auth/AuthContext'
 import {
   addProjectMember,
   createProjectInvitation,
+  createProjectTaskTransferRequest,
   createProjectTask,
   deleteProjectTask,
   getProject,
   getProjectTasks,
   listProjectInvitations,
+  listProjectTaskTransferRequests,
   removeProjectMember,
+  cancelProjectTaskTransferRequest,
   resendProjectInvitation,
   revokeProjectInvitation,
   updateProjectMember,
@@ -19,6 +22,7 @@ import {
   type ProjectInvitation,
   type ProjectRole,
   type ProjectTask,
+  type ProjectTaskTransferRequest,
   type ProjectTaskInput,
   type ProjectTaskStatus,
   type TaskPriority,
@@ -31,6 +35,7 @@ const emptyTask: ProjectTaskInput = {
   priority: 'Medium',
   status: 'Pending',
   deadline: null,
+  assigneeIds: [],
 }
 
 function displayDate(value: string): string {
@@ -48,6 +53,7 @@ export default function ProjectWorkspacePage() {
   const [project, setProject] = useState<Project | null>(null)
   const [role, setRole] = useState<ProjectRole | null>(null)
   const [tasks, setTasks] = useState<ProjectTask[]>([])
+  const [showAssignedToMe, setShowAssignedToMe] = useState(false)
   const [taskToComplete, setTaskToComplete] = useState<ProjectTask | null>(null)
   const [isConfirmingCompletion, setIsConfirmingCompletion] = useState(false)
   const [form, setForm] = useState<ProjectTaskInput>(emptyTask)
@@ -57,6 +63,8 @@ export default function ProjectWorkspacePage() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<MemberRole>('member')
   const [invitations, setInvitations] = useState<ProjectInvitation[]>([])
+  const [taskTransferRequests, setTaskTransferRequests] = useState<ProjectTaskTransferRequest[]>([])
+  const [transferTargetId, setTransferTargetId] = useState('')
   const [teamActionId, setTeamActionId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -68,19 +76,28 @@ export default function ProjectWorkspacePage() {
     setError('')
     if (showLoading) setIsLoading(true)
     try {
-      const [details, projectTasks] = await Promise.all([getProject(projectId), getProjectTasks(projectId)])
+      const [details, projectTasks] = await Promise.all([
+        getProject(projectId),
+        getProjectTasks(projectId, showAssignedToMe),
+      ])
       const canManageTeam = details.role === 'owner' || details.role === 'admin'
-      const pendingInvitations = canManageTeam ? await listProjectInvitations(projectId) : []
+      const [pendingInvitations, pendingTaskTransferRequests] = canManageTeam
+        ? await Promise.all([
+          listProjectInvitations(projectId),
+          listProjectTaskTransferRequests(projectId),
+        ])
+        : [[], []]
       setProject(details.project)
       setRole(details.role)
       setTasks(projectTasks)
       setInvitations(pendingInvitations)
+      setTaskTransferRequests(pendingTaskTransferRequests)
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to load this project. Try again.'))
     } finally {
       if (showLoading) setIsLoading(false)
     }
-  }, [projectId])
+  }, [projectId, showAssignedToMe])
 
   useEffect(() => {
     void loadWorkspace()
@@ -92,6 +109,15 @@ export default function ProjectWorkspacePage() {
 
   const canEditTasks = role === 'owner' || role === 'admin' || role === 'member'
   const canManageMembers = role === 'owner' || role === 'admin'
+  const canManageProjectTasks = role === 'owner' || role === 'admin'
+  const canCreateTasks = canManageProjectTasks || role === 'member'
+  const visibleProjectTasks = tasks
+  const transferableMembers = project
+    ? [
+      { ...project.owner, role: 'owner' as const },
+      ...project.members.filter((member) => member.role !== 'viewer'),
+    ]
+    : []
 
   function setField<K extends keyof ProjectTaskInput>(field: K, value: ProjectTaskInput[K]) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -105,6 +131,7 @@ export default function ProjectWorkspacePage() {
       priority: task.priority,
       status: task.status,
       deadline: task.deadline?.slice(0, 10) ?? null,
+      assigneeIds: task.assignees.map((assignee) => assignee.id),
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -125,7 +152,9 @@ export default function ProjectWorkspacePage() {
         await updateProjectTask(projectId, editingId, form)
         setNotice('Task updated.')
       } else {
-        await createProjectTask(projectId, form)
+        const input = { ...form }
+        if (!canManageProjectTasks) delete input.assigneeIds
+        await createProjectTask(projectId, input)
         setNotice('Task added to the project.')
       }
       cancelEditing()
@@ -280,6 +309,39 @@ export default function ProjectWorkspacePage() {
     }
   }
 
+  async function handleRequestTaskTransfer(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!projectId || !transferTargetId) return
+    setError('')
+    setNotice('')
+    setTeamActionId('task-transfer-request')
+    try {
+      await createProjectTaskTransferRequest(projectId, transferTargetId)
+      setTransferTargetId('')
+      setNotice('Task transfer request sent. The member must choose and approve a personal task before it is shared.')
+      await loadWorkspace(false)
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Unable to send task transfer request.'))
+    } finally {
+      setTeamActionId(null)
+    }
+  }
+
+  async function handleCancelTaskTransferRequest(request: ProjectTaskTransferRequest) {
+    if (!projectId) return
+    setError('')
+    setTeamActionId(request.id)
+    try {
+      await cancelProjectTaskTransferRequest(projectId, request.id)
+      setTaskTransferRequests((current) => current.filter((item) => item.id !== request.id))
+      setNotice('Task transfer request cancelled.')
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Unable to cancel task transfer request.'))
+    } finally {
+      setTeamActionId(null)
+    }
+  }
+
   return (
     <main className="projects-shell">
       <aside className="projects-sidebar">
@@ -333,11 +395,15 @@ export default function ProjectWorkspacePage() {
                 </div>
               </div>
 
-              {canEditTasks && (
+              {canCreateTasks && (!editingId || canManageProjectTasks) && (
                 <form className="project-task-form" onSubmit={(event) => void handleSaveTask(event)}>
                   <div className="task-form-title">
                     <h2>{editingId ? 'Edit task' : 'Add a task'}</h2>
-                    <p className="muted">Changes are shared with project members.</p>
+                    <p className="muted">
+                      {canManageProjectTasks
+                        ? 'Changes are shared with project members.'
+                        : 'New tasks are automatically assigned to you. Only Owners and Admins can edit task details.'}
+                    </p>
                   </div>
                   <label>
                     Task title
@@ -363,6 +429,29 @@ export default function ProjectWorkspacePage() {
                     Deadline <span className="muted">(optional)</span>
                     <input onChange={(event) => setField('deadline', event.target.value || null)} type="date" value={form.deadline ?? ''} />
                   </label>
+                  {canManageProjectTasks && (
+                    <label className="assignee-field">
+                      Assign to team members
+                      <select
+                        multiple
+                        onChange={(event) => setField(
+                          'assigneeIds',
+                          Array.from(event.currentTarget.selectedOptions, (option) => option.value),
+                        )}
+                        value={form.assigneeIds ?? []}
+                      >
+                        <option value={project.owner.id}>{project.owner.name} (Owner)</option>
+                        {project.members
+                          .filter((member) => member.role !== 'viewer')
+                          .map((member) => (
+                            <option key={member.id} value={member.id}>
+                              {member.name} ({member.role})
+                            </option>
+                          ))}
+                      </select>
+                      <span className="muted">Hold Ctrl (Windows) or Command (Mac) to select multiple members.</span>
+                    </label>
+                  )}
                   <div className="task-form-actions">
                     <button className="button" disabled={isSaving} type="submit">{isSaving ? 'Saving...' : editingId ? 'Save changes' : 'Add task'}</button>
                     {editingId && <button className="button button-secondary" onClick={cancelEditing} type="button">Cancel</button>}
@@ -370,9 +459,21 @@ export default function ProjectWorkspacePage() {
                 </form>
               )}
 
+              <div className="project-task-filter">
+                <p className="muted">Showing {showAssignedToMe ? 'tasks assigned to you' : 'all project tasks'}.</p>
+                <button
+                  aria-pressed={showAssignedToMe}
+                  className="button button-secondary"
+                  onClick={() => setShowAssignedToMe((current) => !current)}
+                  type="button"
+                >
+                  {showAssignedToMe ? 'Show all tasks' : 'Assigned to me'}
+                </button>
+              </div>
+
               <section aria-label="Project task board" className="project-board">
                 {statuses.map((status) => {
-                  const columnTasks = tasks.filter((task) => task.status === status)
+                  const columnTasks = visibleProjectTasks.filter((task) => task.status === status)
                   return (
                     <section aria-label={`${status} tasks`} className="board-column" key={status}>
                       <div className="board-column-heading">
@@ -385,7 +486,7 @@ export default function ProjectWorkspacePage() {
                             <li className="board-task-card" key={task.id}>
                               <div className="board-task-top">
                                 <span className={`task-priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
-                                {canEditTasks && (
+                                {canManageProjectTasks && (
                                   <div className="task-actions">
                                     <button aria-label={`Edit ${task.title}`} className="text-button" onClick={() => startEditing(task)} type="button">Edit</button>
                                     <button aria-label={`Delete ${task.title}`} className="text-button delete-button" onClick={() => void handleDeleteTask(task)} type="button">Delete</button>
@@ -394,9 +495,22 @@ export default function ProjectWorkspacePage() {
                               </div>
                               <h3>{task.title}</h3>
                               {task.description && <p className="board-task-description">{task.description}</p>}
+                              <div className="task-assignees" aria-label="Assigned team members">
+                                {task.assignees.length
+                                  ? task.assignees.map((assignee) => (
+                                    <span className="task-assignee-pill" key={assignee.id}>
+                                      {assignee.name || assignee.email || 'Team member'}
+                                      {assignee.id === user.id ? ' (you)' : ''}
+                                    </span>
+                                  ))
+                                  : <span className="muted">Unassigned</span>}
+                              </div>
                               <div className="board-task-footer">
                                 {task.deadline ? <time dateTime={task.deadline}>Due {displayDate(task.deadline)}</time> : <span>No deadline</span>}
-                                {canEditTasks && (
+                                {(canManageProjectTasks || (
+                                  role === 'member' &&
+                                  task.assignees.some((assignee) => assignee.id === user.id)
+                                )) && (
                                   <select aria-label={`Move ${task.title} to`} onChange={(event) => void changeTaskStatus(task, event.target.value as ProjectTaskStatus)} value={task.status}>
                                     {statuses.map((option) => <option key={option}>{option}</option>)}
                                   </select>
@@ -528,6 +642,56 @@ export default function ProjectWorkspacePage() {
                           ))}
                         </ul>
                       ) : <p className="muted">No pending invitations.</p>}
+                    </div>
+                  )}
+                  {canManageMembers && (
+                    <div className="pending-invitations">
+                      <h3>Request a personal task</h3>
+                      <p className="muted">The member chooses a task and explicitly approves before it leaves their private list.</p>
+                      <form className="member-add-form invitation-form" onSubmit={(event) => void handleRequestTaskTransfer(event)}>
+                        <label>
+                          Project member
+                          <select
+                            onChange={(event) => setTransferTargetId(event.target.value)}
+                            required
+                            value={transferTargetId}
+                          >
+                            <option value="">Select a member</option>
+                            {transferableMembers.map((member) => (
+                              <option key={member.id} value={member.id}>
+                                {member.name} ({member.role})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          className="button"
+                          disabled={teamActionId === 'task-transfer-request'}
+                          type="submit"
+                        >
+                          {teamActionId === 'task-transfer-request' ? 'Sending...' : 'Request transfer'}
+                        </button>
+                      </form>
+                      {taskTransferRequests.length > 0 ? (
+                        <ul className="member-list">
+                          {taskTransferRequests.map((request) => (
+                            <li className="member-list-item" key={request.id}>
+                              <span className="member-identity">
+                                <strong>{request.member.name}</strong>
+                                <small>{request.member.email} · Awaiting approval</small>
+                              </span>
+                              <button
+                                className="text-button delete-button"
+                                disabled={teamActionId === request.id}
+                                onClick={() => void handleCancelTaskTransferRequest(request)}
+                                type="button"
+                              >
+                                Cancel
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="muted">No pending task transfer requests.</p>}
                     </div>
                   )}
                 </section>

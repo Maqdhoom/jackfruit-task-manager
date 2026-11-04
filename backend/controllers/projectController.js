@@ -2,9 +2,10 @@ const mongoose = require('mongoose');
 const Project = require('../models/Project');
 const ProjectInvitation = require('../models/ProjectInvitation');
 const ProjectTask = require('../models/ProjectTask');
+const TaskTransferRequest = require('../models/TaskTransferRequest');
 const User = require('../models/User');
 
-const taskFields = ['title', 'description', 'priority', 'status', 'deadline'];
+const taskFields = ['title', 'description', 'priority', 'status', 'deadline', 'assigneeIds'];
 const priorities = ['Low', 'Medium', 'High'];
 const statuses = ['Pending', 'In Progress', 'Completed'];
 const roles = ['admin', 'member', 'viewer'];
@@ -99,6 +100,19 @@ function validateProjectTaskInput(body, partial = false) {
     }
   }
 
+  if (Object.hasOwn(body, 'assigneeIds')) {
+    if (
+      !Array.isArray(body.assigneeIds) ||
+      body.assigneeIds.length > 50 ||
+      body.assigneeIds.some((id) => !isValidId(id)) ||
+      new Set(body.assigneeIds.map((id) => id.toLowerCase())).size !== body.assigneeIds.length
+    ) {
+      return { error: 'Assignees must be a list of up to 50 unique valid user IDs' };
+    }
+
+    values.assigneeIds = body.assigneeIds;
+  }
+
   return { values };
 }
 
@@ -145,7 +159,42 @@ function serializeTask(task) {
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
     createdBy: task.createdBy?._id?.toString() ?? task.createdBy?.toString(),
+    assignees: (task.assigneeIds ?? []).filter(Boolean).map((assignee) => ({
+      id: assignee?._id?.toString() ?? assignee?.toString(),
+      name: assignee?.name ?? '',
+      email: assignee?.email ?? '',
+    })),
   };
+}
+
+function getEligibleAssigneeIds(project) {
+  const projectOwnerId = (project.ownerId?._id?.toString() ?? project.ownerId.toString()).toLowerCase();
+  return new Set([
+    projectOwnerId,
+    ...project.members
+      .filter((member) => ['admin', 'member', 'editor'].includes(member.role))
+      .map((member) =>
+        (member.userId?._id?.toString() ?? member.userId.toString()).toLowerCase()
+      ),
+  ]);
+}
+
+function validateAssigneeMembership(project, assigneeIds) {
+  const eligibleAssignees = getEligibleAssigneeIds(project);
+  return assigneeIds.every((assigneeId) =>
+    eligibleAssignees.has(assigneeId.toString().toLowerCase())
+  );
+}
+
+function canMemberUpdateProjectTask(task, userId, values) {
+  const assigneeIds = task.assigneeIds ?? [];
+  return (
+    Object.keys(values).length === 1 &&
+    Object.hasOwn(values, 'status') &&
+    assigneeIds.some((assigneeId) =>
+      (assigneeId?._id?.toString() ?? assigneeId?.toString()) === userId.toString()
+    )
+  );
 }
 
 function serializeProject(project, taskStats = { total: 0, completed: 0 }) {
@@ -377,8 +426,39 @@ async function updateProjectMember(req, res) {
     return res.status(403).json({ message: 'Only the project owner can manage admin roles' });
   }
 
+  const previousRole = member.role;
   member.role = req.body.role;
-  await project.save();
+  const session = await mongoose.startSession();
+
+  try {
+    await session.withTransaction(async () => {
+      await project.save({ session });
+
+      if (member.role === 'viewer') {
+        await ProjectTask.updateMany(
+          { projectId: project._id, assigneeIds: member.userId._id },
+          { $pull: { assigneeIds: member.userId._id } },
+          { session }
+        );
+        await TaskTransferRequest.updateMany(
+          { projectId: project._id, taskOwnerId: member.userId._id, status: 'pending' },
+          { $set: { status: 'cancelled', respondedAt: new Date() } },
+          { session }
+        );
+      }
+
+      if (previousRole === 'admin' && member.role !== 'admin') {
+        await TaskTransferRequest.updateMany(
+          { projectId: project._id, requestedBy: member.userId._id, status: 'pending' },
+          { $set: { status: 'cancelled', respondedAt: new Date() } },
+          { session }
+        );
+      }
+    });
+  } finally {
+    await session.endSession();
+  }
+
   return res.json({ project: await serializeProjectWithTaskStats(project) });
 }
 
@@ -410,12 +490,45 @@ async function removeProjectMember(req, res) {
   }
 
   project.members = project.members.filter((item) => item.userId.id !== req.params.userId);
-  await project.save();
+  const session = await mongoose.startSession();
+
+  try {
+    await session.withTransaction(async () => {
+      await project.save({ session });
+      await ProjectTask.updateMany(
+        { projectId: project._id, assigneeIds: req.params.userId },
+        { $pull: { assigneeIds: req.params.userId } },
+        { session }
+      );
+      await TaskTransferRequest.updateMany(
+        {
+          projectId: project._id,
+          $or: [{ taskOwnerId: req.params.userId }, { requestedBy: req.params.userId }],
+          status: 'pending',
+        },
+        { $set: { status: 'cancelled', respondedAt: new Date() } },
+        { session }
+      );
+    });
+  } finally {
+    await session.endSession();
+  }
+
   return res.json({ project: await serializeProjectWithTaskStats(project) });
 }
 
 async function getProjectTasks(req, res) {
-  const tasks = await ProjectTask.find({ projectId: req.project._id }).sort({ createdAt: -1 });
+  const filter = { projectId: req.project._id };
+
+  if (req.query.assignedToMe === 'true') {
+    filter.assigneeIds = req.userId;
+  } else if (req.query.assignedToMe !== undefined && req.query.assignedToMe !== 'false') {
+    return res.status(400).json({ message: 'assignedToMe must be true or false' });
+  }
+
+  const tasks = await ProjectTask.find(filter)
+    .sort({ createdAt: -1 })
+    .populate('assigneeIds', 'name email');
   return res.json({ tasks: tasks.map(serializeTask) });
 }
 
@@ -426,11 +539,28 @@ async function createProjectTask(req, res) {
     return res.status(400).json({ message: validation.error });
   }
 
+  const values = { ...validation.values };
+  const role = getProjectRole(req.project, req.userId);
+
+  if (role === 'member' || role === 'viewer') {
+    if (Object.hasOwn(values, 'assigneeIds')) {
+      return res.status(403).json({ message: 'Only project owners and admins can assign tasks' });
+    }
+    values.assigneeIds = [req.userId];
+  } else {
+    values.assigneeIds ??= [];
+
+    if (!validateAssigneeMembership(req.project, values.assigneeIds)) {
+      return res.status(400).json({ message: 'Every assignee must be an active, task-eligible member of this project' });
+    }
+  }
+
   const task = await ProjectTask.create({
-    ...validation.values,
+    ...values,
     projectId: req.project._id,
     createdBy: req.userId,
   });
+  await task.populate('assigneeIds', 'name email');
   return res.status(201).json({ task: serializeTask(task) });
 }
 
@@ -445,16 +575,54 @@ async function updateProjectTask(req, res) {
     return res.status(400).json({ message: validation.error });
   }
 
-  const task = await ProjectTask.findOneAndUpdate(
-    { _id: req.params.taskId, projectId: req.project._id },
-    validation.values,
-    { new: true, runValidators: true }
-  );
+  const role = getProjectRole(req.project, req.userId);
+  let task;
+
+  if (role === 'owner' || role === 'admin') {
+    if (
+      Object.hasOwn(validation.values, 'assigneeIds') &&
+      !validateAssigneeMembership(req.project, validation.values.assigneeIds)
+    ) {
+      return res.status(400).json({ message: 'Every assignee must be an active, task-eligible member of this project' });
+    }
+
+    task = await ProjectTask.findOneAndUpdate(
+      { _id: req.params.taskId, projectId: req.project._id },
+      validation.values,
+      { new: true, runValidators: true }
+    );
+  } else if (role === 'member') {
+    const taskForMember = await ProjectTask.findOne({
+      _id: req.params.taskId,
+      projectId: req.project._id,
+    });
+
+    if (!taskForMember) {
+      return res.status(404).json({ message: 'Project task not found' });
+    }
+
+    if (!canMemberUpdateProjectTask(taskForMember, req.userId, validation.values)) {
+      return res.status(403).json({ message: 'Members can update the status of tasks assigned to them only' });
+    }
+
+    task = await ProjectTask.findOneAndUpdate(
+      {
+        _id: req.params.taskId,
+        projectId: req.project._id,
+        assigneeIds: req.userId,
+      },
+      { $set: { status: validation.values.status } },
+      { new: true, runValidators: true }
+    );
+  } else {
+    return res.status(403).json({ message: 'You do not have permission to update project tasks' });
+  }
 
   if (!task) {
     return res.status(404).json({ message: 'Project task not found' });
   }
 
+  await task.populate('assigneeIds', 'name email');
   return res.json({ task: serializeTask(task) });
 }
 
@@ -475,25 +643,136 @@ async function deleteProjectTask(req, res) {
   return res.json({ message: 'Project task deleted successfully' });
 }
 
+async function createTaskTransferRequest(req, res) {
+  if (
+    !req.body ||
+    typeof req.body !== 'object' ||
+    Array.isArray(req.body) ||
+    Object.keys(req.body).length !== 1 ||
+    !Object.hasOwn(req.body, 'userId') ||
+    !isValidId(req.body.userId)
+  ) {
+    return res.status(400).json({ message: 'A valid project member ID is required' });
+  }
+
+  const callerRole = getProjectRole(req.project, req.userId);
+  if (!['owner', 'admin'].includes(callerRole)) {
+    return res.status(403).json({ message: 'Only project owners and admins can request a task transfer' });
+  }
+
+  const taskOwnerId = req.body.userId.toLowerCase();
+  const targetRole = getProjectRole(req.project, taskOwnerId);
+  if (!['owner', 'admin', 'member'].includes(targetRole)) {
+    return res.status(400).json({ message: 'Choose an owner, admin, or member of this project' });
+  }
+
+  if (taskOwnerId === req.userId.toLowerCase()) {
+    return res.status(400).json({ message: 'Use the personal task transfer action for your own tasks' });
+  }
+
+  const now = new Date();
+  await TaskTransferRequest.updateMany(
+    { projectId: req.project._id, status: 'pending', expiresAt: { $lte: now } },
+    { $set: { status: 'expired', respondedAt: now } }
+  );
+
+  try {
+    const request = await TaskTransferRequest.create({
+      projectId: req.project._id,
+      taskOwnerId,
+      requestedBy: req.userId,
+      expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+    });
+
+    return res.status(201).json({
+      request: {
+        id: request.id,
+        taskOwnerId: request.taskOwnerId.toString(),
+        status: request.status,
+        expiresAt: request.expiresAt.toISOString(),
+      },
+      message: 'The project member can now review and approve this request from their task dashboard.',
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ message: 'There is already a pending task transfer request for this member and project.' });
+    }
+    throw error;
+  }
+}
+
+async function listProjectTaskTransferRequests(req, res) {
+  const requests = await TaskTransferRequest.find({
+    projectId: req.project._id,
+    requestedBy: req.userId,
+    status: 'pending',
+    expiresAt: { $gt: new Date() },
+  })
+    .sort({ createdAt: -1 })
+    .populate('taskOwnerId', 'name email');
+
+  return res.json({
+    requests: requests.map((request) => ({
+      id: request.id,
+      member: {
+        id: request.taskOwnerId.id,
+        name: request.taskOwnerId.name,
+        email: request.taskOwnerId.email,
+      },
+      expiresAt: request.expiresAt.toISOString(),
+      createdAt: request.createdAt.toISOString(),
+    })),
+  });
+}
+
+async function cancelProjectTaskTransferRequest(req, res) {
+  if (!isValidId(req.params.requestId)) {
+    return res.status(400).json({ message: 'Invalid transfer request ID' });
+  }
+
+  const request = await TaskTransferRequest.findOneAndUpdate(
+    {
+      _id: req.params.requestId,
+      projectId: req.project._id,
+      requestedBy: req.userId,
+      status: 'pending',
+    },
+    { $set: { status: 'cancelled', respondedAt: new Date() } },
+    { new: true }
+  );
+
+  if (!request) {
+    return res.status(404).json({ message: 'Pending transfer request not found' });
+  }
+
+  return res.json({ message: 'Task transfer request cancelled.' });
+}
+
 module.exports = {
   addProjectMember,
   canAssignMemberRole,
+  canMemberUpdateProjectTask,
+  canMemberUpdateProjectTask,
   canEditProjectTasks,
   canManageMemberRole,
   canManageMembers,
   createProject,
   createProjectTask,
+  createTaskTransferRequest,
   deleteProjectTask,
   getProject,
   getProjectRole,
   getProjectTasks,
+  listProjectTaskTransferRequests,
   isValidId,
   listProjects,
   removeProjectMember,
   serializeProject,
   serializeTask,
+  validateAssigneeMembership,
   updateProjectMember,
   updateProjectTask,
+  cancelProjectTaskTransferRequest,
   validateProjectInput,
   validateProjectTaskInput,
 };

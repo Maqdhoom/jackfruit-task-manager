@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
+const Project = require('../models/Project');
+const ProjectTask = require('../models/ProjectTask');
 const Task = require('../models/Task');
+const TaskTransferRequest = require('../models/TaskTransferRequest');
 
 const priorities = ['Low', 'Medium', 'High'];
 const statuses = ['Pending', 'In Progress', 'Completed'];
@@ -79,6 +82,43 @@ function isValidTaskId(id) {
   return mongoose.isValidObjectId(id) && /^[a-f\d]{24}$/i.test(id);
 }
 
+function getTaskEligibleProjectRole(project, userId) {
+  const ownerId = project.ownerId?._id?.toString() ?? project.ownerId.toString();
+  if (ownerId === userId.toString()) return 'owner';
+  const role = project.members.find(
+    (member) => (member.userId?._id?.toString() ?? member.userId.toString()) === userId.toString()
+  )?.role;
+  return role === 'editor' ? 'member' : role ?? null;
+}
+
+function isTaskEligibleProjectRole(role) {
+  return ['owner', 'admin', 'member'].includes(role);
+}
+
+function validateTransferInput(body, permittedFields) {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body) ||
+    Object.keys(body).some((field) => !permittedFields.includes(field))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function canAcceptTaskTransferRequest(request, userId, projectId, now = new Date()) {
+  const taskOwnerId = request.taskOwnerId?._id?.toString() ?? request.taskOwnerId?.toString();
+  const requestProjectId = request.projectId?._id?.toString() ?? request.projectId?.toString();
+
+  return (
+    taskOwnerId?.toLowerCase() === userId.toString().toLowerCase() &&
+    requestProjectId?.toLowerCase() === projectId.toString().toLowerCase() &&
+    request.status === 'pending' &&
+    request.expiresAt > now
+  );
+}
+
 function serializeTask(task) {
   return {
     id: task.id,
@@ -145,6 +185,186 @@ async function getTasks(req, res) {
   return res.json({ tasks: tasks.map(serializeTask) });
 }
 
+async function getTaskTransferRequests(req, res) {
+  const now = new Date();
+  await TaskTransferRequest.updateMany(
+    { taskOwnerId: req.userId, status: 'pending', expiresAt: { $lte: now } },
+    { $set: { status: 'expired', respondedAt: now } }
+  );
+  const requests = await TaskTransferRequest.find({
+    taskOwnerId: req.userId,
+    status: 'pending',
+    expiresAt: { $gt: now },
+  })
+    .sort({ createdAt: -1 })
+    .populate('projectId', 'name')
+    .populate('requestedBy', 'name email');
+
+  return res.json({
+    requests: requests
+      .filter((request) => request.projectId && request.requestedBy)
+      .map((request) => ({
+        id: request.id,
+        project: {
+          id: request.projectId.id,
+          name: request.projectId.name,
+        },
+        requestedBy: {
+          id: request.requestedBy.id,
+          name: request.requestedBy.name,
+          email: request.requestedBy.email,
+        },
+        expiresAt: request.expiresAt.toISOString(),
+        createdAt: request.createdAt.toISOString(),
+      })),
+  });
+}
+
+class TaskTransferError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function transferPersonalTask(taskId, userId, projectId, requestId = null) {
+  const session = await mongoose.startSession();
+  let projectTaskId;
+
+  try {
+    await session.withTransaction(async () => {
+      const personalTask = await Task.findOne({ _id: taskId, userId }).session(session);
+      if (!personalTask) throw new TaskTransferError(404, 'Personal task not found.');
+
+      const project = await Project.findById(projectId).session(session);
+      if (!project) throw new TaskTransferError(404, 'Project not found.');
+
+      if (!isTaskEligibleProjectRole(getTaskEligibleProjectRole(project, userId))) {
+        throw new TaskTransferError(403, 'You must be an owner, admin, or member of the project to transfer a task.');
+      }
+
+      if (requestId) {
+        const request = await TaskTransferRequest.findById(requestId).session(session);
+        if (!request || !canAcceptTaskTransferRequest(request, userId, projectId)) {
+          throw new TaskTransferError(404, 'This transfer request is no longer available.');
+        }
+      }
+
+      const [projectTask] = await ProjectTask.create([{
+        title: personalTask.title,
+        description: personalTask.description,
+        priority: personalTask.priority,
+        status: personalTask.status,
+        deadline: personalTask.deadline,
+        projectId: project._id,
+        createdBy: userId,
+        assigneeIds: [userId],
+      }], { session });
+
+      const deletedTask = await Task.findOneAndDelete({ _id: personalTask._id, userId }, { session });
+      if (!deletedTask) throw new TaskTransferError(409, 'The personal task changed during transfer. Please try again.');
+
+      if (requestId) {
+        const requestUpdate = await TaskTransferRequest.updateOne(
+          {
+            _id: requestId,
+            taskOwnerId: userId,
+            status: 'pending',
+            expiresAt: { $gt: new Date() },
+          },
+          {
+            $set: {
+              status: 'accepted',
+              respondedAt: new Date(),
+              projectTaskId: projectTask._id,
+            },
+          },
+          { session }
+        );
+        if (requestUpdate.modifiedCount !== 1) {
+          throw new TaskTransferError(409, 'This transfer request was cancelled or already handled.');
+        }
+      }
+      projectTaskId = projectTask.id;
+    });
+  } catch (error) {
+    if (error instanceof TaskTransferError) {
+      return { error: { status: error.status, message: error.message } };
+    }
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+
+  return { projectTaskId };
+}
+
+async function transferOwnTaskToProject(req, res) {
+  if (!isValidTaskId(req.params.id)) {
+    return res.status(400).json({ message: 'Invalid task ID' });
+  }
+  if (!validateTransferInput(req.body, ['projectId']) || !isValidTaskId(req.body.projectId)) {
+    return res.status(400).json({ message: 'A valid destination project ID is required' });
+  }
+
+  const result = await transferPersonalTask(req.params.id, req.userId, req.body.projectId);
+  if (result.error) {
+    return res.status(result.error.status).json({ message: result.error.message });
+  }
+  return res.json({ projectTaskId: result.projectTaskId, message: 'Personal task moved into the project.' });
+}
+
+async function acceptTaskTransferRequest(req, res) {
+  if (
+    !isValidTaskId(req.params.requestId) ||
+    !validateTransferInput(req.body, ['taskId']) ||
+    !isValidTaskId(req.body.taskId)
+  ) {
+    return res.status(400).json({ message: 'A valid transfer request and personal task ID are required' });
+  }
+
+  const request = await TaskTransferRequest.findOne({
+    _id: req.params.requestId,
+    taskOwnerId: req.userId,
+    status: 'pending',
+    expiresAt: { $gt: new Date() },
+  });
+  if (!request) {
+    return res.status(404).json({ message: 'Pending transfer request not found or expired.' });
+  }
+
+  const result = await transferPersonalTask(
+    req.body.taskId,
+    req.userId,
+    request.projectId,
+    request.id
+  );
+  if (result.error) {
+    return res.status(result.error.status).json({ message: result.error.message });
+  }
+  return res.json({ projectTaskId: result.projectTaskId, message: 'Task transferred to the project.' });
+}
+
+async function declineTaskTransferRequest(req, res) {
+  if (!isValidTaskId(req.params.requestId)) {
+    return res.status(400).json({ message: 'Invalid transfer request ID' });
+  }
+  const request = await TaskTransferRequest.findOneAndUpdate(
+    {
+      _id: req.params.requestId,
+      taskOwnerId: req.userId,
+      status: 'pending',
+      expiresAt: { $gt: new Date() },
+    },
+    { $set: { status: 'declined', respondedAt: new Date() } },
+    { new: true }
+  );
+  if (!request) {
+    return res.status(404).json({ message: 'Pending transfer request not found or expired.' });
+  }
+  return res.json({ message: 'Task transfer request declined.' });
+}
+
 async function getTask(req, res) {
   if (!isValidTaskId(req.params.id)) {
     return res.status(400).json({ message: 'Invalid task ID' });
@@ -198,11 +418,17 @@ async function deleteTask(req, res) {
 }
 
 module.exports = {
+  acceptTaskTransferRequest,
   calculateDashboardSummary,
+  canAcceptTaskTransferRequest,
   createTask,
   deleteTask,
+  declineTaskTransferRequest,
   getDashboardSummary,
   getTask,
   getTasks,
+  getTaskTransferRequests,
+  isTaskEligibleProjectRole,
+  transferOwnTaskToProject,
   updateTask,
 };
