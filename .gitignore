@@ -5,6 +5,8 @@ frontend/.env
 frontend/.env.*
 !frontend/.env.example
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
 node_modules/
 .env
 dist/

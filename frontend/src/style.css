@@ -43,7 +43,9 @@ a:hover {
 
 .app-shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
+  min-width: 0;
   place-items: center;
   padding: 32px 20px;
 }
@@ -637,6 +639,7 @@ h2 {
 .projects-shell {
   display: grid;
   width: min(1440px, 100%);
+  min-width: 0;
   min-height: min(900px, calc(100vh - 64px));
   grid-template-columns: 238px minmax(0, 1fr);
   overflow: hidden;
@@ -1670,7 +1673,7 @@ h2 {
 @media (max-width: 760px) {
   .projects-shell {
     min-height: calc(100vh - 32px);
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     overflow: visible;
     border-radius: 14px;
   }
@@ -1705,10 +1708,13 @@ h2 {
   .sidebar-nav {
     display: flex;
     flex: 1;
+    min-width: 0;
     justify-content: flex-end;
+    overflow-x: auto;
   }
 
   .sidebar-nav a {
+    flex: 0 0 auto;
     min-height: 34px;
     padding: 0 9px;
     font-size: 0.78rem;
@@ -2443,6 +2449,10 @@ h2 {
 @media (max-width: 520px) {
   .calendar-heading-row h1 {
     font-size: 1.55rem;
+  }
+
+  .calendar-toolbar {
+    flex-wrap: wrap;
   }
 
   .calendar-month-navigation h2 {

@@ -58,3 +58,26 @@ npm run migrate:member-roles
 ```
 
 The migration is safe to rerun: it converts legacy `Editor` memberships to `Member` and leaves `Viewer` memberships read-only.
+
+## Week 7 security and verification
+
+The API uses Helmet security headers, disables the Express identifying header, accepts JSON request bodies up to 50 KB, returns sanitized 400/413 parser errors, and limits registration/login attempts to 10 requests per IP per 15 minutes. The authentication limiter uses its built-in in-memory store; configure a shared store before running multiple API instances so limits are consistent across instances.
+
+Run backend tests and dependency audits from this directory:
+
+```powershell
+npm test
+npm audit
+npm audit --omit=dev
+```
+
+The backend tests include unit and HTTP-level route tests. The HTTP tests run against the real Express app and controller/middleware code with in-memory Mongoose model stubs; they do not require MongoDB, and do not replace a deployment smoke test against the configured database.
+
+Run frontend build and browser tests from `..\frontend`:
+
+```powershell
+npm run build
+npm run test:e2e
+```
+
+The browser suite uses the installed Google Chrome (`channel: 'chrome'`) and starts Vite on `127.0.0.1:4173`; install Chrome and frontend dependencies before running it.

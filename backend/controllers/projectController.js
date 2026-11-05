@@ -859,7 +859,6 @@ module.exports = {
   addProjectMember,
   canAssignMemberRole,
   canMemberUpdateProjectTask,
-  canMemberUpdateProjectTask,
   canEditProjectTasks,
   canManageMemberRole,
   canManageMembers,
