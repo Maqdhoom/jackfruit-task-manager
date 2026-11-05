@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { getErrorMessage, useAuth } from '../auth/AuthContext'
+import NotificationBell from '../components/NotificationBell'
 import { createProject, listProjects, type Project } from '../services/projectService'
 
 export default function ProjectsPage() {
@@ -14,20 +15,31 @@ export default function ProjectsPage() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
-  const loadProjects = useCallback(async () => {
-    setError('')
-    setIsLoading(true)
+  const loadProjects = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setError('')
+      setIsLoading(true)
+    }
     try {
       setProjects(await listProjects())
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to load your projects. Try again.'))
     } finally {
-      setIsLoading(false)
+      if (showLoading) setIsLoading(false)
     }
   }, [])
 
   useEffect(() => {
     void loadProjects()
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadProjects(false)
+    }
+    const timer = window.setInterval(refreshWhenVisible, 30_000)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [loadProjects])
 
   if (!user) {
@@ -76,6 +88,7 @@ export default function ProjectsPage() {
         <p className="sidebar-label">MAIN MENU</p>
         <nav aria-label="Main navigation" className="sidebar-nav">
           <Link to="/dashboard"><span aria-hidden="true">▦</span> My tasks</Link>
+          <Link to="/calendar"><span aria-hidden="true">▣</span> Calendar</Link>
           <Link aria-current="page" className="active" to="/projects"><span aria-hidden="true">◈</span> Projects</Link>
         </nav>
         <div className="sidebar-bottom">
@@ -89,7 +102,7 @@ export default function ProjectsPage() {
       <section className="projects-main">
         <header className="projects-topbar">
           <div className="projects-breadcrumb"><span>Workspace</span><span aria-hidden="true">/</span><strong>Projects</strong></div>
-          <div className="projects-user"><span>{user.name}</span><span className="user-avatar">{user.name.slice(0, 1).toUpperCase()}</span></div>
+          <div className="projects-user"><Link className="button button-secondary" to="/calendar">Calendar</Link><NotificationBell /><span>{user.name}</span><span className="user-avatar">{user.name.slice(0, 1).toUpperCase()}</span></div>
         </header>
         <div className="projects-content">
           <div className="projects-heading">

@@ -8,6 +8,9 @@ const authRoutes = require('./routes/authRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const invitationRoutes = require('./routes/invitationRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const Notification = require('./models/Notification');
+const { startDeadlineReminderScheduler } = require('./services/deadlineReminderService');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -28,6 +31,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/invitations', invitationRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.get('/', (req, res) => {
   res.send('Task Manager API is running');
 });
@@ -43,6 +47,8 @@ app.use((error, req, res, next) => {
 
 async function startServer() {
   await connectDB();
+  await Notification.init();
+  startDeadlineReminderScheduler();
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
   });

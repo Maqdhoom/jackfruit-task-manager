@@ -39,8 +39,23 @@ export type DashboardData = {
   upcomingTasks: Task[]
 }
 
+export type CalendarTask = {
+  id: string
+  title: string
+  priority: TaskPriority
+  status: TaskStatus
+  deadline: string
+  source: 'personal' | 'project'
+  project: { id: string; name: string } | null
+}
+
 export async function getTasks(): Promise<Task[]> {
   const response = await API.get<{ tasks: Task[] }>('/tasks')
+  return response.data.tasks
+}
+
+export async function getCalendarTasks(): Promise<CalendarTask[]> {
+  const response = await API.get<{ tasks: CalendarTask[] }>('/tasks/calendar')
   return response.data.tasks
 }
 

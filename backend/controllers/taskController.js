@@ -187,6 +187,51 @@ async function getTasks(req, res) {
   return res.json({ tasks: tasks.map(serializeTask) });
 }
 
+async function getCalendarTasks(req, res) {
+  const projects = await Project.find({
+    $or: [{ ownerId: req.userId }, { 'members.userId': req.userId }],
+  }).select('_id name');
+  const projectIds = projects.map((project) => project._id);
+  const [personalTasks, projectTasks] = await Promise.all([
+    Task.find({ userId: req.userId, deadline: { $ne: null } })
+      .select('title priority status deadline')
+      .lean(),
+    ProjectTask.find({ projectId: { $in: projectIds }, deadline: { $ne: null } })
+      .select('title priority status deadline projectId')
+      .populate('projectId', 'name')
+      .lean(),
+  ]);
+  const projectNames = new Map(projects.map((project) => [project._id.toString(), project.name]));
+
+  return res.json({
+    tasks: [
+      ...personalTasks.map((task) => ({
+        id: task._id.toString(),
+        title: task.title,
+        priority: task.priority,
+        status: task.status,
+        deadline: task.deadline.toISOString(),
+        source: 'personal',
+        project: null,
+      })),
+      ...projectTasks.map((task) => {
+        const projectId = task.projectId?._id?.toString() ?? task.projectId?.toString();
+        return {
+          id: task._id.toString(),
+          title: task.title,
+          priority: task.priority,
+          status: task.status,
+          deadline: task.deadline.toISOString(),
+          source: 'project',
+          project: projectId
+            ? { id: projectId, name: projectNames.get(projectId) ?? task.projectId.name }
+            : null,
+        };
+      }),
+    ],
+  });
+}
+
 async function getTaskTransferRequests(req, res) {
   const now = new Date();
   await TaskTransferRequest.updateMany(
@@ -461,6 +506,7 @@ module.exports = {
   deleteTask,
   declineTaskTransferRequest,
   getDashboardSummary,
+  getCalendarTasks,
   getTask,
   getTasks,
   getTaskTransferRequests,

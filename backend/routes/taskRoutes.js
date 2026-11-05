@@ -11,6 +11,7 @@ const {
   acceptTaskTransferRequest,
   declineTaskTransferRequest,
   getDashboardSummary,
+  getCalendarTasks,
   getTask,
   getTasks,
   getTaskTransferRequests,
@@ -23,6 +24,7 @@ const router = express.Router();
 router.use(authMiddleware);
 router.route('/').post(createTask).get(getTasks);
 router.get('/dashboard/summary', getDashboardSummary);
+router.get('/calendar', getCalendarTasks);
 router.get('/transfer-requests', getTaskTransferRequests);
 router.post('/transfer-requests/:requestId/accept', acceptTaskTransferRequest);
 router.post('/transfer-requests/:requestId/decline', declineTaskTransferRequest);

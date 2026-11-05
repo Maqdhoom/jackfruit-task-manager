@@ -28,6 +28,27 @@ Project task changes and their activity entries are committed together using Mon
 
 After deploying this feature, backfill creation history for existing project tasks by running `npm run migrate:project-task-activity` from the backend directory. The migration is safe to rerun and does not create a duplicate task-created entry.
 
+## In-app notifications and deadline reminders
+
+Authenticated users can use these endpoints with the existing JWT cookie or bearer token:
+
+- `GET /api/notifications?cursor=<notification-id>` — first/newest page (20 items), unread count, and optional next cursor.
+- `PATCH /api/notifications/:notificationId/read` — mark one notification read.
+- `PATCH /api/notifications/read-all` — mark all of the current user's notifications read.
+- `DELETE /api/notifications/:notificationId` — hide one of the current user's notifications.
+
+Every operation is scoped to the signed-in user. Deletion hides a notification while preserving its reminder idempotency record, so a deleted reminder is not recreated by a scheduler retry.
+
+The backend starts a `node-cron` reminder job after connecting to MongoDB. It checks project tasks every minute and notifies each active assignee once for each deadline stage: 24 hours before the deadline, when it is due, and shortly after it becomes overdue. Completed tasks and unassigned tasks do not receive reminders. Personal tasks are not included. A unique per-user reminder key prevents duplicates; the job checkpoint and lock support catch-up after downtime and prevent concurrent server instances from duplicating work.
+
+Changing a task deadline generates reminders for the new deadline; completing a task or removing an assignee clears their unread task reminders. No additional environment variables are required.
+
+## Calendar and live updates
+
+The authenticated `GET /api/tasks/calendar` endpoint returns the signed-in user's personal tasks and tasks from projects they currently belong to or own, including task deadlines and project labels. It does not expose tasks from projects the user cannot access. Tasks without a deadline are omitted.
+
+The Calendar page displays tasks by due date in a month grid, with previous/next month navigation and a shortcut back to the current month. The dashboard, project list, project workspace, and Calendar refresh task data every 30 seconds while visible; notification counts and lists refresh every 60 seconds. Refreshing pauses in background tabs and runs when a tab becomes visible again.
+
 ## Existing project role migration
 
 Back up the database before deploying the new role model. After deploying the updated backend and configuring its database connection, run:
