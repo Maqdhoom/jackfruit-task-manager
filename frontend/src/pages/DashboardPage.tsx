@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { getErrorMessage, useAuth } from '../auth/AuthContext'
 import TaskComments from '../components/TaskComments'
+import NotificationBell from '../components/NotificationBell'
 import {
   acceptTaskTransferRequest,
   createTask,
@@ -30,6 +31,7 @@ const emptyForm: TaskInput = {
   status: 'Pending',
   deadline: '',
 }
+const REFRESH_INTERVAL_MS = 30_000
 
 function displayDate(value: string): string {
   return new Date(value).toLocaleDateString(undefined, {
@@ -60,10 +62,15 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const dashboardRequestInFlight = useRef(false)
 
-  const loadDashboard = useCallback(async () => {
-    setError('')
-    setIsLoading(true)
+  const loadDashboard = useCallback(async (showLoading = true) => {
+    if (dashboardRequestInFlight.current) return
+    dashboardRequestInFlight.current = true
+    if (showLoading) {
+      setError('')
+      setIsLoading(true)
+    }
 
     try {
       const [nextTasks, nextDashboardData, nextProjects, nextTransferRequests] = await Promise.all([
@@ -79,12 +86,25 @@ export default function DashboardPage() {
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Unable to load dashboard. Try again.'))
     } finally {
-      setIsLoading(false)
+      if (showLoading) setIsLoading(false)
+      dashboardRequestInFlight.current = false
     }
   }, [])
 
   useEffect(() => {
     void loadDashboard()
+  }, [loadDashboard])
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadDashboard(false)
+    }
+    const timer = window.setInterval(refreshWhenVisible, REFRESH_INTERVAL_MS)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [loadDashboard])
 
   const visibleTasks = useMemo(() => {
@@ -267,6 +287,8 @@ export default function DashboardPage() {
           <p className="muted dashboard-greeting">Welcome, {user.name}</p>
         </div>
         <div className="dashboard-header-actions">
+          <NotificationBell />
+          <Link className="button button-secondary" to="/calendar">Calendar</Link>
           <Link className="button button-secondary" to="/projects">Projects</Link>
           <button className="button button-secondary" disabled={isLoggingOut} onClick={() => void handleLogout()}>
             {isLoggingOut ? 'Logging out...' : 'Log out'}

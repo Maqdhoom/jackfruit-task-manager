@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Project = require('../models/Project');
 const ProjectInvitation = require('../models/ProjectInvitation');
 const ProjectTask = require('../models/ProjectTask');
+const Notification = require('../models/Notification');
 const TaskComment = require('../models/TaskComment');
 const TaskTransferRequest = require('../models/TaskTransferRequest');
 const User = require('../models/User');
@@ -211,6 +212,14 @@ async function clearMemberAssignments(projectId, memberUserId, actorId, session)
       session,
     });
   }
+
+  await Notification.updateMany({
+    userId: memberUserId,
+    taskType: 'project',
+    taskId: { $in: tasks.map((task) => task._id) },
+  }, {
+    $set: { deletedAt: new Date() },
+  }, { session });
 }
 
 function canMemberUpdateProjectTask(task, userId, values) {
@@ -642,6 +651,33 @@ async function updateProjectTask(req, res) {
       if (changes.length === 0) return;
       task.set(validation.values);
       await task.save({ session });
+      if (Object.hasOwn(validation.values, 'assigneeIds')) {
+        await Notification.updateMany({
+          taskType: 'project',
+          taskId: task._id,
+          userId: { $nin: task.assigneeIds },
+        }, {
+          $set: { deletedAt: new Date() },
+        }, { session });
+      }
+      if (validation.values.status === 'Completed') {
+        await Notification.updateMany({
+          taskType: 'project',
+          taskId: task._id,
+          readAt: null,
+        }, {
+          $set: { deletedAt: new Date() },
+        }, { session });
+      } else if (Object.hasOwn(validation.values, 'deadline')) {
+        await Notification.updateMany({
+          taskType: 'project',
+          taskId: task._id,
+          readAt: null,
+          ...(task.deadline ? { dueAt: { $ne: task.deadline } } : {}),
+        }, {
+          $set: { deletedAt: new Date() },
+        }, { session });
+      }
       await recordProjectTaskActivity({
         projectId: req.project._id,
         taskId: task._id,
@@ -694,6 +730,12 @@ async function deleteProjectTask(req, res) {
         taskType: 'project',
         projectId: req.project._id,
         taskId: task._id,
+      }, { session });
+      await Notification.updateMany({
+        taskType: 'project',
+        taskId: task._id,
+      }, {
+        $set: { deletedAt: new Date() },
       }, { session });
       await ProjectTask.deleteOne({ _id: task._id, projectId: req.project._id }, { session });
     });

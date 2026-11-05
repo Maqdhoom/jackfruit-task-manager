@@ -3,6 +3,7 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { getErrorMessage, useAuth } from '../auth/AuthContext'
 import ProjectActivityFeed from '../components/ProjectActivityFeed'
 import TaskComments from '../components/TaskComments'
+import NotificationBell from '../components/NotificationBell'
 import {
   addProjectMember,
   createProjectInvitation,
@@ -105,6 +106,15 @@ export default function ProjectWorkspacePage() {
 
   useEffect(() => {
     void loadWorkspace()
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadWorkspace(false)
+    }
+    const timer = window.setInterval(refreshWhenVisible, 30_000)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [loadWorkspace])
 
   if (!user) {
@@ -368,6 +378,7 @@ export default function ProjectWorkspacePage() {
         <p className="sidebar-label">MAIN MENU</p>
         <nav aria-label="Main navigation" className="sidebar-nav">
           <Link to="/dashboard"><span aria-hidden="true">▦</span> My tasks</Link>
+          <Link to="/calendar"><span aria-hidden="true">▣</span> Calendar</Link>
           <Link className="active" to="/projects"><span aria-hidden="true">◈</span> Projects</Link>
         </nav>
         <div className="sidebar-bottom">
@@ -379,7 +390,7 @@ export default function ProjectWorkspacePage() {
       <section className="projects-main">
         <header className="projects-topbar">
           <div className="projects-breadcrumb"><Link to="/projects">Projects</Link><span aria-hidden="true">/</span><strong>{project?.name ?? 'Workspace'}</strong></div>
-          <span className="user-avatar" title={user.name}>{user.name.slice(0, 1).toUpperCase()}</span>
+          <div className="projects-user"><Link className="button button-secondary" to="/calendar">Calendar</Link><NotificationBell /><span className="user-avatar" title={user.name}>{user.name.slice(0, 1).toUpperCase()}</span></div>
         </header>
         <div className="workspace-content">
           {error && <p className="error project-message" role="alert">{error}</p>}

@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import DashboardPage from './pages/DashboardPage'
+import CalendarPage from './pages/CalendarPage'
 import InvitationAcceptancePage from './pages/InvitationAcceptancePage'
 import LoginPage from './pages/LoginPage'
 import ProjectWorkspacePage from './pages/ProjectWorkspacePage'
@@ -19,6 +20,7 @@ export default function App() {
             <Route path="/invitations/:token" element={<InvitationAcceptancePage />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
             </Route>
