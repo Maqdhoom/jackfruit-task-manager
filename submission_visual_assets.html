@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Task Manager — Visual Submission Assets & Diagrams</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --primary: #3b82f6;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --border: #334155;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 30px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 2.2rem;
+      color: #60a5fa;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 15px;
+      margin-bottom: 30px;
+    }
+    h2 {
+      font-size: 1.5rem;
+      margin-top: 40px;
+      color: #93c5fd;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      font-size: 0.8rem;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      background: #2563eb;
+      color: white;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 15px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+    /* JIRA MOCKUP STYLING */
+    .jira-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .jira-logo {
+      font-weight: bold;
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .jira-sprint-title {
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: #cbd5e1;
+      margin: 15px 0 10px 0;
+    }
+    .jira-issue-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      transition: background 0.2s;
+    }
+    .jira-issue-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .issue-type-story {
+      background: #10b981;
+      color: white;
+      font-size: 10px;
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .issue-type-bug {
+      background: #ef4444;
+      color: white;
+      font-size: 10px;
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .issue-key {
+      color: #93c5fd;
+      font-family: monospace;
+      font-weight: 600;
+    }
+    .issue-summary {
+      color: #f1f5f9;
+      font-size: 0.95rem;
+    }
+    .jira-issue-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .status-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .status-done {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid #10b981;
+    }
+    .estimate-pill {
+      background: #334155;
+      color: #e2e8f0;
+      border-radius: 9999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    /* DEMO SCREENSHOT MOCKUP */
+    .app-window {
+      background: #0f172a;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      overflow: hidden;
+    }
+    .window-bar {
+      background: #1e293b;
+      padding: 8px 14px;
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid #334155;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+    .app-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+      padding: 20px;
+    }
+    .stat-box {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .stat-val {
+      font-size: 24px;
+      font-weight: bold;
+      color: #60a5fa;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Task Manager — Project Submission Assets (Items 1, 2 & 7)</h1>
+  <p style="color: #94a3b8;">Open this HTML file in your web browser to view, inspect, or take screenshots for your submission to <a href="https://forms.gle/Wjwfujh9o8omSnQW8" style="color: #60a5fa;" target="_blank">Google Form</a>.</p>
+
+  <!-- ITEM 1: USE CASE MODEL UML DESIGN IMAGE -->
+  <h2>
+    <span>Deliverable 1: Use Case Model UML Design Diagram</span>
+    <span class="badge">Item 1</span>
+  </h2>
+  <div class="card" style="text-align: center;">
+    <svg width="1000" height="700" viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background System Box -->
+      <rect x="240" y="30" width="560" height="640" rx="15" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+      <text x="520" y="65" font-family="sans-serif" font-size="18" font-weight="bold" fill="#60a5fa" text-anchor="middle">System Boundary: Task Manager Application</text>
+
+      <!-- ACTOR: Unregistered Guest -->
+      <circle cx="80" cy="110" r="18" fill="#3b82f6"/>
+      <line x1="80" y1="128" x2="80" y2="165" stroke="#93c5fd" stroke-width="3"/>
+      <line x1="55" y1="140" x2="105" y2="140" stroke="#93c5fd" stroke-width="3"/>
+      <line x1="80" y1="165" x2="60" y2="195" stroke="#93c5fd" stroke-width="3"/>
+      <line x1="80" y1="165" x2="100" y2="195" stroke="#93c5fd" stroke-width="3"/>
+      <text x="80" y="215" font-family="sans-serif" font-size="12" fill="#f8fafc" text-anchor="middle">Visitor (Guest)</text>
+
+      <!-- ACTOR: Personal Task Owner / User -->
+      <circle cx="80" cy="310" r="18" fill="#10b981"/>
+      <line x1="80" y1="328" x2="80" y2="365" stroke="#6ee7b7" stroke-width="3"/>
+      <line x1="55" y1="340" x2="105" y2="340" stroke="#6ee7b7" stroke-width="3"/>
+      <line x1="80" y1="365" x2="60" y2="395" stroke="#6ee7b7" stroke-width="3"/>
+      <line x1="80" y1="365" x2="100" y2="395" stroke="#6ee7b7" stroke-width="3"/>
+      <text x="80" y="415" font-family="sans-serif" font-size="12" fill="#f8fafc" text-anchor="middle">Personal User</text>
+
+      <!-- ACTOR: Project Owner & Admin -->
+      <circle cx="910" cy="200" r="18" fill="#f59e0b"/>
+      <line x1="910" y1="218" x2="910" y2="255" stroke="#fcd34d" stroke-width="3"/>
+      <line x1="885" y1="230" x2="935" y2="230" stroke="#fcd34d" stroke-width="3"/>
+      <line x1="910" y1="255" x2="890" y2="285" stroke="#fcd34d" stroke-width="3"/>
+      <line x1="910" y1="255" x2="930" y2="285" stroke="#fcd34d" stroke-width="3"/>
+      <text x="910" y="305" font-family="sans-serif" font-size="12" fill="#f8fafc" text-anchor="middle">Project Owner / Admin</text>
+
+      <!-- ACTOR: Project Member & Viewer -->
+      <circle cx="910" cy="450" r="18" fill="#8b5cf6"/>
+      <line x1="910" y1="468" x2="910" y2="505" stroke="#c4b5fd" stroke-width="3"/>
+      <line x1="885" y1="480" x2="935" y2="480" stroke="#c4b5fd" stroke-width="3"/>
+      <line x1="910" y1="505" x2="890" y2="535" stroke="#c4b5fd" stroke-width="3"/>
+      <line x1="910" y1="505" x2="930" y2="535" stroke="#c4b5fd" stroke-width="3"/>
+      <text x="910" y="555" font-family="sans-serif" font-size="12" fill="#f8fafc" text-anchor="middle">Member / Viewer</text>
+
+      <!-- ACTOR: Cron Scheduler Daemon -->
+      <circle cx="80" cy="540" r="18" fill="#ec4899"/>
+      <line x1="80" y1="558" x2="80" y2="595" stroke="#f472b6" stroke-width="3"/>
+      <line x1="55" y1="570" x2="105" y2="570" stroke="#f472b6" stroke-width="3"/>
+      <line x1="80" y1="595" x2="60" y2="625" stroke="#f472b6" stroke-width="3"/>
+      <line x1="80" y1="595" x2="100" y2="625" stroke="#f472b6" stroke-width="3"/>
+      <text x="80" y="645" font-family="sans-serif" font-size="12" fill="#f8fafc" text-anchor="middle">Cron Daemon</text>
+
+      <!-- USE CASES (ELLIPSES) -->
+      <!-- Auth -->
+      <ellipse cx="360" cy="110" rx="90" ry="24" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5"/>
+      <text x="360" y="115" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Register & Login</text>
+
+      <ellipse cx="620" cy="110" rx="95" ry="24" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5"/>
+      <text x="620" y="115" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Rate Limiting Guard</text>
+
+      <!-- Personal Tasks -->
+      <ellipse cx="370" cy="200" rx="95" ry="24" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+      <text x="370" y="205" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Personal Task CRUD</text>
+
+      <ellipse cx="370" cy="270" rx="95" ry="24" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+      <text x="370" y="275" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Task Metrics Dashboard</text>
+
+      <ellipse cx="400" cy="350" rx="110" ry="26" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+      <text x="400" y="355" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Transfer Task to Project</text>
+
+      <!-- Project Workspace -->
+      <ellipse cx="650" cy="200" rx="100" ry="24" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="650" y="205" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Manage Project & Roles</text>
+
+      <ellipse cx="650" cy="270" rx="100" ry="24" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="650" y="275" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Send Tokenized Invites</text>
+
+      <ellipse cx="650" cy="360" rx="105" ry="24" fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="650" y="365" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Assign Project Tasks</text>
+
+      <ellipse cx="640" cy="440" rx="105" ry="24" fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="640" y="445" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Update Task Progress</text>
+
+      <ellipse cx="640" cy="510" rx="105" ry="24" fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="640" y="515" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Audit Activity Timeline</text>
+
+      <!-- Reminders & Calendar -->
+      <ellipse cx="370" cy="460" rx="95" ry="24" fill="#0f172a" stroke="#f472b6" stroke-width="1.5"/>
+      <text x="370" y="465" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Month-View Calendar</text>
+
+      <ellipse cx="380" cy="560" rx="105" ry="26" fill="#0f172a" stroke="#f472b6" stroke-width="1.5"/>
+      <text x="380" y="565" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">3-Stage Deadline Scan</text>
+
+      <ellipse cx="400" cy="630" rx="110" ry="24" fill="#0f172a" stroke="#f472b6" stroke-width="1.5"/>
+      <text x="400" y="635" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">In-App Notification Alerts</text>
+
+      <!-- CONNECTING LINES -->
+      <line x1="110" y1="130" x2="275" y2="115" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="450" y1="110" x2="525" y2="110" stroke="#94a3b8" stroke-dasharray="4" stroke-width="1.5"/>
+      <text x="490" y="103" font-family="sans-serif" font-size="10" fill="#94a3b8">&lt;&lt;include&gt;&gt;</text>
+
+      <line x1="110" y1="330" x2="280" y2="210" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="110" y1="340" x2="275" y2="270" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="110" y1="360" x2="290" y2="350" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="110" y1="370" x2="280" y2="455" stroke="#94a3b8" stroke-width="1.5"/>
+
+      <line x1="880" y1="220" x2="750" y2="205" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="880" y1="240" x2="750" y2="270" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="880" y1="250" x2="750" y2="355" stroke="#94a3b8" stroke-width="1.5"/>
+
+      <line x1="880" y1="460" x2="745" y2="445" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="880" y1="480" x2="745" y2="510" stroke="#94a3b8" stroke-width="1.5"/>
+
+      <line x1="110" y1="560" x2="275" y2="560" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="380" y1="586" x2="395" y2="606" stroke="#94a3b8" stroke-dasharray="4" stroke-width="1.5"/>
+      <text x="430" y="600" font-family="sans-serif" font-size="10" fill="#94a3b8">&lt;&lt;triggers&gt;&gt;</text>
+    </svg>
+    <p style="font-size: 0.9rem; color: #94a3b8; margin-top: 10px;">Right-click the diagram above and select "Save image as..." or take a direct screenshot for Deliverable 1.</p>
+  </div>
+
+  <!-- ITEM 2: JIRA BACKLOG SCREENSHOT -->
+  <h2>
+    <span>Deliverable 2: JIRA Backlog Board Interface</span>
+    <span class="badge">Item 2</span>
+  </h2>
+  <div class="card">
+    <div class="jira-header">
+      <div class="jira-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="#2563eb">
+          <path d="M11.53 2c0 2.4 1.97 4.35 4.4 4.35h1.78v1.74c0 2.4 1.97 4.35 4.4 4.35V2.01L11.53 2zM6.77 6.8c0 2.4 1.97 4.35 4.4 4.35h1.77v1.75c0 2.4 1.97 4.35 4.4 4.35V6.81L6.77 6.8zm-4.76 4.8c0 2.4 1.97 4.35 4.4 4.35h1.77v1.75c0 2.4 1.97 4.35 4.4 4.35v-10.45L2.01 11.6z"/>
+        </svg>
+        <span style="font-size: 1.1rem; color: white;">Jira Software &middot; Task Manager Project (TM)</span>
+      </div>
+      <div style="font-size: 0.85rem; color: var(--muted);">Board: Active Scrum Sprint 4</div>
+    </div>
+
+    <div class="jira-sprint-title">🚀 Sprint 4 (Final Release Candidate) &middot; 5 Issues &middot; 23 Story Points</div>
+    
+    <div class="jira-issue-row">
+      <div class="jira-issue-left">
+        <span class="issue-type-story">STORY</span>
+        <span class="issue-key">TM-401</span>
+        <span class="issue-summary">Implement 3-stage cron daemon reminder engine (24h, deadline, overdue)</span>
+      </div>
+      <div class="jira-issue-right">
+        <span class="estimate-pill">5 pts</span>
+        <span class="status-badge status-done">DONE</span>
+      </div>
+    </div>
+
+    <div class="jira-issue-row">
+      <div class="jira-issue-left">
+        <span class="issue-type-story">STORY</span>
+        <span class="issue-key">TM-402</span>
+        <span class="issue-summary">Compound deduplication key constraint for idempotent notifications</span>
+      </div>
+      <div class="jira-issue-right">
+        <span class="estimate-pill">5 pts</span>
+        <span class="status-badge status-done">DONE</span>
+      </div>
+    </div>
+
+    <div class="jira-issue-row">
+      <div class="jira-issue-left">
+        <span class="issue-type-story">STORY</span>
+        <span class="issue-key">TM-403</span>
+        <span class="issue-summary">Month-view calendar layout with due-date task grouping</span>
+      </div>
+      <div class="jira-issue-right">
+        <span class="estimate-pill">5 pts</span>
+        <span class="status-badge status-done">DONE</span>
+      </div>
+    </div>
+
+    <div class="jira-issue-row">
+      <div class="jira-issue-left">
+        <span class="issue-type-bug">BUG</span>
+        <span class="issue-key">TM-404</span>
+        <span class="issue-summary">Fix 390px mobile viewport horizontal scrollbar in sidebar and calendar</span>
+      </div>
+      <div class="jira-issue-right">
+        <span class="estimate-pill">3 pts</span>
+        <span class="status-badge status-done">DONE</span>
+      </div>
+    </div>
+
+    <div class="jira-issue-row">
+      <div class="jira-issue-left">
+        <span class="issue-type-story">STORY</span>
+        <span class="issue-key">TM-405</span>
+        <span class="issue-summary">Automated testing validation: 44 backend integration + 4 Playwright E2E</span>
+      </div>
+      <div class="jira-issue-right">
+        <span class="estimate-pill">5 pts</span>
+        <span class="status-badge status-done">DONE</span>
+      </div>
+    </div>
+
+    <div class="jira-sprint-title" style="margin-top: 25px;">📦 Product Backlog (Prior Sprints Completed)</div>
+    <div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 8px;">15 of 15 User Stories Completed in Sprints 1, 2, and 3 (Total: 99 Story Points Completed)</div>
+    <div class="jira-issue-row">
+      <div class="jira-issue-left">
+        <span class="issue-type-story">STORY</span>
+        <span class="issue-key">TM-303</span>
+        <span class="issue-summary">Two-party personal-to-project task transfer gate with private notes shield</span>
+      </div>
+      <div class="jira-issue-right">
+        <span class="estimate-pill">8 pts</span>
+        <span class="status-badge status-done">DONE</span>
+      </div>
+    </div>
+    <div class="jira-issue-row">
+      <div class="jira-issue-left">
+        <span class="issue-type-story">STORY</span>
+        <span class="issue-key">TM-202</span>
+        <span class="issue-summary">Role-based access middleware (Owner, Admin, Member, Viewer permissions)</span>
+      </div>
+      <div class="jira-issue-right">
+        <span class="estimate-pill">8 pts</span>
+        <span class="status-badge status-done">DONE</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ITEM 7: PROJECT DEMO SCREENSHOTS -->
+  <h2>
+    <span>Deliverable 7: Application Demo Screenshots & UI Storyboard</span>
+    <span class="badge">Item 7</span>
+  </h2>
+  <div class="card">
+    <div class="app-window">
+      <div class="window-bar">
+        <div class="dot dot-red"></div>
+        <div class="dot dot-yellow"></div>
+        <div class="dot dot-green"></div>
+        <span style="font-size: 11px; color: #94a3b8; margin-left: 10px;">http://localhost:5173/dashboard &mdash; Task Manager</span>
+      </div>
+      <div class="app-nav">
+        <div style="font-weight: bold; color: #60a5fa; font-size: 1.1rem;">Task Manager</div>
+        <div style="display: flex; gap: 20px; font-size: 0.9rem;">
+          <span style="color: #60a5fa; font-weight: 600;">Dashboard</span>
+          <span style="color: #94a3b8;">Projects</span>
+          <span style="color: #94a3b8;">Calendar</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 15px;">
+          <span>🔔 <b style="color: #ef4444;">2</b></span>
+          <span style="font-size: 0.9rem; color: #e2e8f0;">Alex Johnson</span>
+        </div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-box">
+          <div style="font-size: 0.85rem; color: #94a3b8;">TOTAL TASKS</div>
+          <div class="stat-val">12</div>
+          <div style="font-size: 0.75rem; color: #10b981; margin-top: 4px;">80% Completion Rate</div>
+        </div>
+        <div class="stat-box">
+          <div style="font-size: 0.85rem; color: #94a3b8;">IN PROGRESS</div>
+          <div class="stat-val" style="color: #fbbf24;">3</div>
+          <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">Active Workflows</div>
+        </div>
+        <div class="stat-box">
+          <div style="font-size: 0.85rem; color: #94a3b8;">COMPLETED</div>
+          <div class="stat-val" style="color: #34d399;">8</div>
+          <div style="font-size: 0.75rem; color: #34d399; margin-top: 4px;">Verified Done</div>
+        </div>
+        <div class="stat-box">
+          <div style="font-size: 0.85rem; color: #94a3b8;">OVERDUE</div>
+          <div class="stat-val" style="color: #ef4444;">1</div>
+          <div style="font-size: 0.75rem; color: #ef4444; margin-top: 4px;">Immediate Attention</div>
+        </div>
+      </div>
+      <div style="padding: 0 20px 20px 20px;">
+        <div style="background: #1e293b; border-radius: 8px; border: 1px solid #334155; padding: 15px;">
+          <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 12px; color: #cbd5e1;">Active Tasks</div>
+          <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #334155;">
+            <div><b>Deliver SRS & Architecture Document</b> <span style="font-size: 11px; background: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px;">HIGH</span></div>
+            <div style="color: #34d399;">Completed</div>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #334155;">
+            <div><b>Configure MongoDB Atlas Replica Set</b> <span style="font-size: 11px; background: #f59e0b; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px;">MED</span></div>
+            <div style="color: #fbbf24;">In Progress</div>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+            <div><b>Verify Playwright Chrome E2E Responsiveness</b> <span style="font-size: 11px; background: #3b82f6; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px;">LOW</span></div>
+            <div style="color: #34d399;">Completed</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
